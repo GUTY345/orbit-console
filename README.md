@@ -14,9 +14,9 @@
 
 ## Screenshots
 
-<img src="users 2.png" width="700px" height="400px"/>
-<img src="home 2.png" width="700px" height="400px"/>
-<img src="settings 2.png" width="700px" height="400px"/>
+<img src="users 2.png" width="680px" height="400px"/>
+<img src="home 2.png" width="680px" height="400px"/>
+<img src="settings 2.png" width="680px" height="400px"/>
 
 ## About
 
