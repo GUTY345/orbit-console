@@ -76,85 +76,113 @@
 #include "core/libraries/zlib/zlib_sce.h"
 #include "fiber/fiber.h"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+#include <string>
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
+#endif
+
 namespace Libraries {
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+static void LogIOSHLERegister(const char* phase, const char* name) {
+    std::string line = "HLE register ";
+    line += phase;
+    line += ": ";
+    line += name;
+    ShadIOSAppendDiagnosticLog(line.c_str());
+}
+
+#define IOS_HLE_REGISTER(name, expr)                                                              \
+    do {                                                                                           \
+        LogIOSHLERegister("begin", name);                                                          \
+        expr;                                                                                      \
+        LogIOSHLERegister("end", name);                                                            \
+    } while (0)
+#else
+#define IOS_HLE_REGISTER(name, expr) expr
+#endif
 
 void InitHLELibs(Core::Loader::SymbolsResolver* sym) {
     LOG_INFO(Lib_Kernel, "Initializing HLE libraries");
-    Libraries::Kernel::RegisterLib(sym);
-    Libraries::LibcInternal::ForceRegisterLib(sym);
-    Libraries::GnmDriver::RegisterLib(sym);
-    Libraries::VideoOut::RegisterLib(sym);
-    Libraries::UserService::RegisterLib(sym);
-    Libraries::SystemService::RegisterLib(sym);
-    Libraries::CommonDialog::RegisterLib(sym);
-    Libraries::MsgDialog::RegisterLib(sym);
-    Libraries::AudioOut::RegisterLib(sym);
-    Libraries::Http::RegisterLib(sym);
-    Libraries::Http2::RegisterLib(sym);
-    Libraries::Net::RegisterLib(sym);
-    Libraries::NetCtl::RegisterLib(sym);
-    Libraries::SaveData::RegisterLib(sym);
-    Libraries::SaveData::Dialog::RegisterLib(sym);
-    Libraries::Ssl2::RegisterLib(sym);
-    Libraries::SysModule::RegisterLib(sym);
-    Libraries::Posix::RegisterLib(sym);
-    Libraries::AudioIn::RegisterLib(sym);
-    Libraries::Np::NpCommerce::RegisterLib(sym);
-    Libraries::Np::NpCommon::RegisterLib(sym);
-    Libraries::Np::NpManager::RegisterLib(sym);
-    Libraries::Np::NpMatching2::RegisterLib(sym);
-    Libraries::Np::NpScore::RegisterLib(sym);
-    Libraries::Np::NpTrophy::RegisterLib(sym);
-    Libraries::Np::NpWebApi::RegisterLib(sym);
-    Libraries::Np::NpWebApi2::RegisterLib(sym);
-    Libraries::Np::NpProfileDialog::RegisterLib(sym);
-    Libraries::Np::NpSnsFacebookDialog::RegisterLib(sym);
-    Libraries::Np::NpAuth::RegisterLib(sym);
-    Libraries::Np::NpParty::RegisterLib(sym);
-    Libraries::Np::NpPartner::RegisterLib(sym);
-    Libraries::Np::NpTus::RegisterLib(sym);
-    Libraries::ScreenShot::RegisterLib(sym);
-    Libraries::AppContent::RegisterLib(sym);
-    Libraries::PngDec::RegisterLib(sym);
-    Libraries::PlayGo::RegisterLib(sym);
-    Libraries::PlayGo::Dialog::RegisterLib(sym);
-    Libraries::Random::RegisterLib(sym);
-    Libraries::Usbd::RegisterLib(sym);
-    Libraries::Pad::RegisterLib(sym);
-    Libraries::Ajm::RegisterLib(sym);
-    Libraries::ErrorDialog::RegisterLib(sym);
-    Libraries::ImeDialog::RegisterLib(sym);
-    Libraries::AvPlayer::RegisterLib(sym);
-    Libraries::Videodec::RegisterLib(sym);
-    Libraries::Videodec2::RegisterLib(sym);
+    IOS_HLE_REGISTER("Kernel", Libraries::Kernel::RegisterLib(sym));
+    IOS_HLE_REGISTER("LibcInternal", Libraries::LibcInternal::ForceRegisterLib(sym));
+    IOS_HLE_REGISTER("GnmDriver", Libraries::GnmDriver::RegisterLib(sym));
+    IOS_HLE_REGISTER("VideoOut", Libraries::VideoOut::RegisterLib(sym));
+    IOS_HLE_REGISTER("UserService", Libraries::UserService::RegisterLib(sym));
+    IOS_HLE_REGISTER("SystemService", Libraries::SystemService::RegisterLib(sym));
+    IOS_HLE_REGISTER("CommonDialog", Libraries::CommonDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("MsgDialog", Libraries::MsgDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("AudioOut", Libraries::AudioOut::RegisterLib(sym));
+    IOS_HLE_REGISTER("Http", Libraries::Http::RegisterLib(sym));
+    IOS_HLE_REGISTER("Http2", Libraries::Http2::RegisterLib(sym));
+    IOS_HLE_REGISTER("Net", Libraries::Net::RegisterLib(sym));
+    IOS_HLE_REGISTER("NetCtl", Libraries::NetCtl::RegisterLib(sym));
+    IOS_HLE_REGISTER("SaveData", Libraries::SaveData::RegisterLib(sym));
+    IOS_HLE_REGISTER("SaveDataDialog", Libraries::SaveData::Dialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("Ssl2", Libraries::Ssl2::RegisterLib(sym));
+    IOS_HLE_REGISTER("SysModule", Libraries::SysModule::RegisterLib(sym));
+    IOS_HLE_REGISTER("Posix", Libraries::Posix::RegisterLib(sym));
+    IOS_HLE_REGISTER("AudioIn", Libraries::AudioIn::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpCommerce", Libraries::Np::NpCommerce::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpCommon", Libraries::Np::NpCommon::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpManager", Libraries::Np::NpManager::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpMatching2", Libraries::Np::NpMatching2::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpScore", Libraries::Np::NpScore::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpTrophy", Libraries::Np::NpTrophy::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpWebApi", Libraries::Np::NpWebApi::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpWebApi2", Libraries::Np::NpWebApi2::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpProfileDialog", Libraries::Np::NpProfileDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpSnsFacebookDialog", Libraries::Np::NpSnsFacebookDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpAuth", Libraries::Np::NpAuth::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpParty", Libraries::Np::NpParty::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpPartner", Libraries::Np::NpPartner::RegisterLib(sym));
+    IOS_HLE_REGISTER("NpTus", Libraries::Np::NpTus::RegisterLib(sym));
+    IOS_HLE_REGISTER("ScreenShot", Libraries::ScreenShot::RegisterLib(sym));
+    IOS_HLE_REGISTER("AppContent", Libraries::AppContent::RegisterLib(sym));
+    IOS_HLE_REGISTER("PngDec", Libraries::PngDec::RegisterLib(sym));
+    IOS_HLE_REGISTER("PlayGo", Libraries::PlayGo::RegisterLib(sym));
+    IOS_HLE_REGISTER("PlayGoDialog", Libraries::PlayGo::Dialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("Random", Libraries::Random::RegisterLib(sym));
+    IOS_HLE_REGISTER("Usbd", Libraries::Usbd::RegisterLib(sym));
+    IOS_HLE_REGISTER("Pad", Libraries::Pad::RegisterLib(sym));
+    IOS_HLE_REGISTER("Ajm", Libraries::Ajm::RegisterLib(sym));
+    IOS_HLE_REGISTER("ErrorDialog", Libraries::ErrorDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("ImeDialog", Libraries::ImeDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("AvPlayer", Libraries::AvPlayer::RegisterLib(sym));
+    IOS_HLE_REGISTER("Videodec", Libraries::Videodec::RegisterLib(sym));
+    IOS_HLE_REGISTER("Videodec2", Libraries::Videodec2::RegisterLib(sym));
     if (EmulatorSettings.GetAudioBackend() == AudioBackend::OpenAL) {
-        Libraries::Audio3dOpenAL::RegisterLib(sym);
+        IOS_HLE_REGISTER("Audio3dOpenAL", Libraries::Audio3dOpenAL::RegisterLib(sym));
     } else {
-        Libraries::Audio3d::RegisterLib(sym);
+        IOS_HLE_REGISTER("Audio3d", Libraries::Audio3d::RegisterLib(sym));
     }
-    Libraries::Ime::RegisterLib(sym);
-    Libraries::GameLiveStreaming::RegisterLib(sym);
-    Libraries::SharePlay::RegisterLib(sym);
-    Libraries::Remoteplay::RegisterLib(sym);
-    Libraries::RazorCpu::RegisterLib(sym);
-    Libraries::Move::RegisterLib(sym);
-    Libraries::Fiber::RegisterLib(sym);
-    Libraries::Mouse::RegisterLib(sym);
-    Libraries::WebBrowserDialog::RegisterLib(sym);
-    Libraries::Zlib::RegisterLib(sym);
-    Libraries::Hmd::RegisterLib(sym);
-    Libraries::HmdSetupDialog::RegisterLib(sym);
-    Libraries::DiscMap::RegisterLib(sym);
-    Libraries::Ulobjmgr::RegisterLib(sym);
-    Libraries::SigninDialog::RegisterLib(sym);
-    Libraries::Camera::RegisterLib(sym);
-    Libraries::CompanionHttpd::RegisterLib(sym);
-    Libraries::CompanionUtil::RegisterLib(sym);
-    Libraries::Voice::RegisterLib(sym);
-    Libraries::Rudp::RegisterLib(sym);
-    Libraries::VrTracker::RegisterLib(sym);
-    Libraries::ContentExport::RegisterLib(sym);
-    Libraries::VideoRecording::RegisterLib(sym);
+    IOS_HLE_REGISTER("Ime", Libraries::Ime::RegisterLib(sym));
+    IOS_HLE_REGISTER("GameLiveStreaming", Libraries::GameLiveStreaming::RegisterLib(sym));
+    IOS_HLE_REGISTER("SharePlay", Libraries::SharePlay::RegisterLib(sym));
+    IOS_HLE_REGISTER("Remoteplay", Libraries::Remoteplay::RegisterLib(sym));
+    IOS_HLE_REGISTER("RazorCpu", Libraries::RazorCpu::RegisterLib(sym));
+    IOS_HLE_REGISTER("Move", Libraries::Move::RegisterLib(sym));
+    IOS_HLE_REGISTER("Fiber", Libraries::Fiber::RegisterLib(sym));
+    IOS_HLE_REGISTER("Mouse", Libraries::Mouse::RegisterLib(sym));
+    IOS_HLE_REGISTER("WebBrowserDialog", Libraries::WebBrowserDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("Zlib", Libraries::Zlib::RegisterLib(sym));
+    IOS_HLE_REGISTER("Hmd", Libraries::Hmd::RegisterLib(sym));
+    IOS_HLE_REGISTER("HmdSetupDialog", Libraries::HmdSetupDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("DiscMap", Libraries::DiscMap::RegisterLib(sym));
+    IOS_HLE_REGISTER("Ulobjmgr", Libraries::Ulobjmgr::RegisterLib(sym));
+    IOS_HLE_REGISTER("SigninDialog", Libraries::SigninDialog::RegisterLib(sym));
+    IOS_HLE_REGISTER("Camera", Libraries::Camera::RegisterLib(sym));
+    IOS_HLE_REGISTER("CompanionHttpd", Libraries::CompanionHttpd::RegisterLib(sym));
+    IOS_HLE_REGISTER("CompanionUtil", Libraries::CompanionUtil::RegisterLib(sym));
+    IOS_HLE_REGISTER("Voice", Libraries::Voice::RegisterLib(sym));
+    IOS_HLE_REGISTER("Rudp", Libraries::Rudp::RegisterLib(sym));
+    IOS_HLE_REGISTER("VrTracker", Libraries::VrTracker::RegisterLib(sym));
+    IOS_HLE_REGISTER("ContentExport", Libraries::ContentExport::RegisterLib(sym));
+    IOS_HLE_REGISTER("VideoRecording", Libraries::VideoRecording::RegisterLib(sym));
 
     // Loading libSceSsl is locked behind a title workaround that currently applies to nothing.
     // Libraries::Ssl::RegisterLib(sym);

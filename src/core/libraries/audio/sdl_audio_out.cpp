@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <thread>
@@ -61,7 +62,8 @@ public:
         : frame_size(port.format_info.FrameSize()), guest_buffer_size(port.BufferSize()),
           buffer_frames(port.buffer_frames), sample_rate(port.sample_rate),
           num_channels(port.format_info.num_channels), is_float(port.format_info.is_float),
-          is_std(port.format_info.is_std), channel_layout(port.format_info.channel_layout) {
+          is_std(port.format_info.is_std), channel_layout(port.format_info.channel_layout),
+          port_type(port.type) {
 
         if (!Initialize(port.type)) {
             LOG_ERROR(Lib_AudioOut, "Failed to initialize SDL audio backend");
@@ -92,6 +94,7 @@ public:
 
         if (!SDL_PutAudioStreamData(stream, internal_buffer, internal_buffer_size)) [[unlikely]] {
             LOG_ERROR(Lib_AudioOut, "Failed to output to SDL audio stream: {}", SDL_GetError());
+            ReinitializeStream("SDL_PutAudioStreamData failed");
         }
 
         last_output_time.store(current_time, std::memory_order_release);
@@ -255,6 +258,13 @@ private:
     }
 
     bool OpenDevice(OrbisAudioOutPort type) {
+        const char* sample_frames = std::getenv("SHADPS4_IOS_SDL_BUFFER_FRAMES");
+        if (sample_frames != nullptr && sample_frames[0] != '\0') {
+            SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, sample_frames);
+        }
+#if defined(__APPLE__)
+        SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "coreaudio");
+#endif
         const SDL_AudioSpec fmt = {
             .format = SDL_AUDIO_F32LE,
             .channels = static_cast<u8>(num_channels),
@@ -300,6 +310,17 @@ private:
         LOG_INFO(Lib_AudioOut, "Opened audio device: {} ({} Hz, {} ch, gain: {:.3f})", device_name,
                  sample_rate, num_channels, initial_gain);
         return true;
+    }
+
+    bool ReinitializeStream(const char* reason) {
+        LOG_WARNING(Lib_AudioOut, "Reinitializing SDL audio stream: {}", reason);
+        if (stream) {
+            SDL_DestroyAudioStream(stream);
+            stream = nullptr;
+        }
+        next_output_time = 0;
+        queue_threshold = 0;
+        return OpenDevice(port_type);
     }
 
     SDL_AudioDeviceID SelectAudioDevice(const std::string& device_name, OrbisAudioOutPort type) {
@@ -571,6 +592,7 @@ private:
     const bool is_float;
     const bool is_std;
     const std::array<int, 8> channel_layout;
+    const OrbisAudioOutPort port_type;
 
     alignas(64) u64 period_us{0};
     alignas(64) std::atomic<u64> last_output_time{0};

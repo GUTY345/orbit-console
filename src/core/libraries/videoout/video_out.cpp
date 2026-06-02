@@ -5,6 +5,7 @@
 #include "common/elf_info.h"
 #include "common/logging/log.h"
 #include "core/emulator_settings.h"
+#include "core/libraries/gnmdriver/gnmdriver.h"
 #include "core/libraries/libs.h"
 #include "core/libraries/system/userservice.h"
 #include "core/libraries/videoout/driver.h"
@@ -16,6 +17,14 @@
 extern std::unique_ptr<Vulkan::Presenter> presenter;
 
 namespace Libraries::VideoOut {
+
+static bool EnsurePresenterForVideoOutAPI(const char* caller) {
+    if (presenter != nullptr) {
+        return true;
+    }
+    LOG_ERROR(Lib_VideoOut, "Presenter is not ready in {}", caller);
+    return Libraries::GnmDriver::EnsurePresenterReady();
+}
 
 static std::unique_ptr<VideoOutDriver> driver;
 
@@ -362,6 +371,9 @@ s32 sceVideoOutSubmitEopFlip(s32 handle, u32 buf_id, u32 mode, s64 flip_arg, voi
 s32 PS4_SYSV_ABI sceVideoOutGetDeviceCapabilityInfo(
     s32 handle, SceVideoOutDeviceCapabilityInfo* pDeviceCapabilityInfo) {
     pDeviceCapabilityInfo->capability = 0;
+    if (!EnsurePresenterForVideoOutAPI("sceVideoOutGetDeviceCapabilityInfo")) {
+        return ORBIS_OK;
+    }
     if (presenter->IsHDRSupported()) {
         auto& game_info = Common::ElfInfo::Instance();
         if (game_info.GetPSFAttributes().support_hdr) {
@@ -401,7 +413,9 @@ s32 PS4_SYSV_ABI sceVideoOutAdjustColor(s32 handle, const SceVideoOutColorSettin
         return ORBIS_VIDEO_OUT_ERROR_INVALID_HANDLE;
     }
 
-    presenter->GetPPSettingsRef().gamma = settings->gamma;
+    if (EnsurePresenterForVideoOutAPI("sceVideoOutAdjustColor")) {
+        presenter->GetPPSettingsRef().gamma = settings->gamma;
+    }
     return ORBIS_OK;
 }
 

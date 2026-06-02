@@ -28,7 +28,11 @@ class MemoryMapViewer;
 
 namespace Core {
 
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+constexpr u64 DEFAULT_MAPPING_BASE = 0;
+#else
 constexpr u64 DEFAULT_MAPPING_BASE = 0x200000000;
+#endif
 
 enum class MemoryProt : u32 {
     NoAccess = 0,
@@ -187,6 +191,10 @@ public:
 
     VAddr SystemReservedVirtualBase() noexcept {
         return impl.SystemReservedVirtualBase();
+    }
+
+    VAddr UserVirtualBase() noexcept {
+        return impl.UserVirtualBase();
     }
 
     bool IsValidGpuMapping(VAddr virtual_addr, u64 size) {

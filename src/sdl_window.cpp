@@ -25,8 +25,18 @@
 
 #ifdef __APPLE__
 #include "SDL3/SDL_metal.h"
+#include <TargetConditionals.h>
 #endif
+#include <chrono>
+#include <cstdlib>
+#include <thread>
 #include <core/emulator_settings.h>
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+extern "C" void* ShadIOSGetNativeMetalLayer(void);
+extern "C" float ShadIOSGetNativeRenderScale(void);
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
+#endif
 
 namespace Frontend {
 
@@ -86,12 +96,44 @@ static Uint32 SDLCALL PollControllerLightColour(void* userdata, SDL_TimerID time
     return interval;
 }
 
+#if defined(__APPLE__) && TARGET_OS_IOS
+static const char* ShadIOSSDLBufferFramesHint() {
+    const char* frames = std::getenv("SHADPS4_IOS_SDL_BUFFER_FRAMES");
+    return frames != nullptr && frames[0] != '\0' ? frames : "1024";
+}
+#endif
+
 WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controllers_,
                      std::string_view window_title)
     : width{width_}, height{height_}, controllers{*controllers_} {
     if (!SDL_SetHint(SDL_HINT_APP_NAME, "shadPS4")) {
         UNREACHABLE_MSG("Failed to set SDL window hint: {}", SDL_GetError());
     }
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSAppendDiagnosticLog("WindowSDL iOS native constructor entry");
+
+    window = nullptr;
+    window_info.type = WindowSystemType::Metal;
+    ShadIOSAppendDiagnosticLog("WindowSDL iOS fetching native CAMetalLayer");
+    window_info.render_surface = ShadIOSGetNativeMetalLayer();
+    window_info.render_surface_scale = ShadIOSGetNativeRenderScale();
+    if (window_info.render_surface == nullptr) {
+        ShadIOSAppendDiagnosticLog("WindowSDL iOS native CAMetalLayer missing");
+        LOG_CRITICAL(Frontend,
+                     "iOS native CAMetalLayer is not attached; Vulkan presentation will fail.");
+    } else {
+        ShadIOSAppendDiagnosticLog("WindowSDL iOS native CAMetalLayer attached");
+        LOG_INFO(Frontend, "Using iOS native CAMetalLayer {} for Vulkan presentation at scale {}",
+                 window_info.render_surface, window_info.render_surface_scale);
+    }
+
+    ShadIOSAppendDiagnosticLog("WindowSDL iOS linking joystick axes");
+    Input::ControllerOutput::LinkJoystickAxes();
+    ShadIOSAppendDiagnosticLog("WindowSDL iOS parsing input config");
+    Input::ParseInputConfig(std::string(Common::ElfInfo::Instance().GameSerial()));
+    ShadIOSAppendDiagnosticLog("WindowSDL iOS constructor complete");
+    return;
+#endif
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         UNREACHABLE_MSG("Failed to initialize SDL video subsystem: {}", SDL_GetError());
     }
@@ -156,6 +198,17 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controller
         window_info.render_surface = SDL_GetPointerProperty(
             SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WAYLAND_SURFACE_POINTER, NULL);
     }
+#elif defined(__APPLE__) && TARGET_OS_IOS
+    window_info.type = WindowSystemType::Metal;
+    window_info.render_surface = ShadIOSGetNativeMetalLayer();
+    window_info.render_surface_scale = ShadIOSGetNativeRenderScale();
+    if (window_info.render_surface == nullptr) {
+        LOG_CRITICAL(Frontend,
+                     "iOS native CAMetalLayer is not attached; Vulkan presentation will fail.");
+    } else {
+        LOG_INFO(Frontend, "Using iOS native CAMetalLayer {} for Vulkan presentation at scale {}",
+                 window_info.render_surface, window_info.render_surface_scale);
+    }
 #elif defined(SDL_PLATFORM_MACOS)
     window_info.type = WindowSystemType::Metal;
     window_info.render_surface = SDL_Metal_GetLayer(SDL_Metal_CreateView(window));
@@ -173,6 +226,10 @@ WindowSDL::WindowSDL(s32 width_, s32 height_, Input::GameControllers* controller
 WindowSDL::~WindowSDL() = default;
 
 void WindowSDL::WaitEvent() {
+#if defined(__APPLE__) && TARGET_OS_IOS
+    std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    return;
+#endif
     // Called on main thread
     SDL_Event event;
 
@@ -300,6 +357,10 @@ void WindowSDL::WaitEvent() {
 }
 
 void WindowSDL::InitTimers() {
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSAppendDiagnosticLog("WindowSDL iOS timers skipped");
+    return;
+#endif
     for (int i = 0; i < 4; ++i) {
         SDL_AddTimer(4, &PollController, controllers[i]);
     }
@@ -307,6 +368,10 @@ void WindowSDL::InitTimers() {
 }
 
 void WindowSDL::RequestKeyboard() {
+#if defined(__APPLE__) && TARGET_OS_IOS
+    keyboard_grab++;
+    return;
+#endif
     if (keyboard_grab == 0) {
         SDL_RunOnMainThread(
             [](void* userdata) { SDL_StartTextInput(static_cast<SDL_Window*>(userdata)); }, window,
@@ -318,6 +383,9 @@ void WindowSDL::RequestKeyboard() {
 void WindowSDL::ReleaseKeyboard() {
     ASSERT(keyboard_grab > 0);
     keyboard_grab--;
+#if defined(__APPLE__) && TARGET_OS_IOS
+    return;
+#endif
     if (keyboard_grab == 0) {
         SDL_RunOnMainThread(
             [](void* userdata) { SDL_StopTextInput(static_cast<SDL_Window*>(userdata)); }, window,
@@ -326,6 +394,10 @@ void WindowSDL::ReleaseKeyboard() {
 }
 
 void WindowSDL::OnResize() {
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ImGui::Core::OnResize();
+    return;
+#endif
     SDL_GetWindowSizeInPixels(window, &width, &height);
     ImGui::Core::OnResize();
 }

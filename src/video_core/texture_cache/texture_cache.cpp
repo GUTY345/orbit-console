@@ -6,6 +6,7 @@
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
+#include "common/ios_low_memory.h"
 #include "common/scope_exit.h"
 #include "core/emulator_settings.h"
 #include "core/memory.h"
@@ -34,6 +35,17 @@ TextureCache::TextureCache(const Vulkan::Instance& instance_, Vulkan::Scheduler&
     ASSERT(null_id.index == NULL_IMAGE_ID.index);
 
     // Set up garbage collection parameters.
+    if (Common::IOSLowMemory::IsEnabled()) {
+        const auto budget = Common::IOSLowMemory::GetBudget();
+        trigger_gc_memory = budget.texture_trigger;
+        pressure_gc_memory = budget.texture_pressure;
+        critical_gc_memory = budget.texture_critical;
+        LOG_INFO(Render_Vulkan,
+                 "iOS low-memory texture GC active: trigger={} MiB pressure={} MiB critical={} MiB",
+                 trigger_gc_memory / 1_MB, pressure_gc_memory / 1_MB, critical_gc_memory / 1_MB);
+        return;
+    }
+
     if (!instance.CanReportMemoryUsage()) {
         trigger_gc_memory = 0;
         pressure_gc_memory = DEFAULT_PRESSURE_GC_MEMORY;
@@ -961,13 +973,16 @@ void TextureCache::UntrackImageTail(ImageId image_id) {
 }
 
 void TextureCache::RunGarbageCollector() {
+    Common::IOSLowMemory::ScopedRenderCriticalSection render_guard;
     SCOPE_EXIT {
         ++gc_tick;
     };
     if (instance.CanReportMemoryUsage()) {
         total_used_memory = instance.GetDeviceMemoryUsage();
     }
-    if (total_used_memory < trigger_gc_memory) {
+    const bool immediate_low_ram_gc =
+        Common::IOSLowMemory::ShouldRunImmediateGC(total_used_memory, gc_tick);
+    if (total_used_memory < trigger_gc_memory && !immediate_low_ram_gc) {
         return;
     }
     std::scoped_lock lock{mutex};
@@ -977,11 +992,11 @@ void TextureCache::RunGarbageCollector() {
     size_t num_deletions = 0;
 
     const auto configure = [&](bool allow_aggressive) {
-        pressured = total_used_memory >= pressure_gc_memory;
-        aggresive = allow_aggressive && total_used_memory >= critical_gc_memory;
-        ticks_to_destroy = aggresive ? 160 : pressured ? 80 : 16;
+        pressured = immediate_low_ram_gc || total_used_memory >= pressure_gc_memory;
+        aggresive = allow_aggressive && (immediate_low_ram_gc || total_used_memory >= critical_gc_memory);
+        ticks_to_destroy = aggresive ? 24 : pressured ? 12 : 6;
         ticks_to_destroy = std::min(ticks_to_destroy, gc_tick);
-        num_deletions = aggresive ? 40 : pressured ? 20 : 10;
+        num_deletions = aggresive ? 96 : pressured ? 48 : 16;
     };
     const auto clean_up = [&](ImageId image_id) {
         if (num_deletions == 0) {
@@ -1024,6 +1039,9 @@ void TextureCache::RunGarbageCollector() {
         // If we are still over the critical limit, run an aggressive GC
         configure(true);
         lru_cache.ForEachItemBelow(gc_tick - ticks_to_destroy, clean_up);
+    }
+    if (immediate_low_ram_gc) {
+        Common::IOSLowMemory::PurgeNow("texture cache immediate GC");
     }
 }
 

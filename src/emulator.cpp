@@ -6,6 +6,9 @@
 #include <iostream>
 #include <set>
 #include <sstream>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 #include <fmt/core.h>
 #include <fmt/xchar.h>
 #include <hwinfo/hwinfo.h>
@@ -54,6 +57,11 @@
 #include <core/file_format/npbind.h>
 
 Frontend::WindowSDL* g_window = nullptr;
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+extern "C" void ShadIOSApplyPendingEmulatorSettings(void);
+extern "C" void ShadIOSSetCoreStage(int stage, const char* description);
+#endif
 
 namespace Core {
 
@@ -242,11 +250,17 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
     }
 
     EmulatorSettings.Load(id);
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSApplyPendingEmulatorSettings();
+#endif
 
     Common::Log::Shutdown();
     // Initialize logging as soon as possible
     Common::Log::Setup((!id.empty() && EmulatorSettings.IsLogSeparate()) ? id + ".log"
                                                                          : "shad_log.txt");
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(60, "logging initialized");
+#endif
 
     if (!std::filesystem::exists(file)) {
         LOG_CRITICAL(Loader, "eboot.bin does not exist: {}",
@@ -335,14 +349,35 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
     Common::Singleton<FileSys::HandleTable>::Instance()->CreateStdHandles();
 
     // Initialize components
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(65, "initializing memory manager");
+#endif
     memory = Core::Memory::Instance();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(66, "initializing game controllers");
+#endif
     controllers = Common::Singleton<Input::GameControllers>::Instance();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(67, "initializing linker");
+#endif
     linker = Common::Singleton<Core::Linker>::Instance();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(70, "core services initialized");
+#endif
 
     // Load renderdoc module
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(71, "loading renderdoc skipped on iOS");
+#endif
     VideoCore::LoadRenderDoc();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(72, "renderdoc stage complete");
+#endif
 
     // Initialize patcher and trophies
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(73, "initializing patcher and trophies");
+#endif
     if (!id.empty()) {
         MemoryPatcher::g_game_serial = id;
 
@@ -371,6 +406,9 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
             index++;
         }
     }
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(74, "patcher and trophies complete");
+#endif
 
     std::string game_title = fmt::format("{} - {} <{}>", id, title, app_version);
     std::string window_title = "";
@@ -392,13 +430,22 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
                                        Common::g_scm_branch, Common::g_scm_desc, game_title);
         }
     }
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(75, "creating frontend window");
+#endif
     window = std::make_unique<Frontend::WindowSDL>(EmulatorSettings.GetWindowWidth(),
                                                    EmulatorSettings.GetWindowHeight(), controllers,
                                                    window_title);
 
     g_window = window.get();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(80, "frontend window initialized");
+#endif
 
     const auto& mount_data_dir = Common::FS::GetUserPath(Common::FS::PathType::GameDataDir);
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(81, "mounting game data paths");
+#endif
     mnt->Mount(mount_data_dir, "/data");
 
     // Mounting temp folders
@@ -407,27 +454,27 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
         // Temp folder should be cleared on each boot.
         std::filesystem::remove_all(mount_temp_dir);
     }
-    std::filesystem::create_directory(mount_temp_dir);
+    std::filesystem::create_directories(mount_temp_dir);
     mnt->Mount(mount_temp_dir, "/temp0");
     mnt->Mount(mount_temp_dir, "/temp");
 
     const auto& mount_download_dir =
         Common::FS::GetUserPath(Common::FS::PathType::DownloadDir) / id;
     if (!std::filesystem::exists(mount_download_dir)) {
-        std::filesystem::create_directory(mount_download_dir);
+        std::filesystem::create_directories(mount_download_dir);
     }
     mnt->Mount(mount_download_dir, "/download0");
 
     const auto& mount_captures_dir = Common::FS::GetUserPath(Common::FS::PathType::CapturesDir);
     if (!std::filesystem::exists(mount_captures_dir)) {
-        std::filesystem::create_directory(mount_captures_dir);
+        std::filesystem::create_directories(mount_captures_dir);
     }
     VideoCore::SetOutputDir(mount_captures_dir, id);
 
     // Mount system fonts
     const auto& fonts_dir = EmulatorSettings.GetFontsDir();
     if (!std::filesystem::exists(fonts_dir)) {
-        std::filesystem::create_directory(fonts_dir);
+        std::filesystem::create_directories(fonts_dir);
     }
 
     // Fonts are mounted into the sandboxed system directory, construct the appropriate path.
@@ -436,7 +483,7 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
     guest_font_dir.append(sandbox_root).append("/common/font");
     const auto& host_font_dir = fonts_dir / "font";
     if (!std::filesystem::exists(host_font_dir)) {
-        std::filesystem::create_directory(host_font_dir);
+        std::filesystem::create_directories(host_font_dir);
     }
     mnt->Mount(host_font_dir, guest_font_dir);
 
@@ -444,9 +491,12 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
     guest_font_dir.append("2");
     const auto& host_font2_dir = fonts_dir / "font2";
     if (!std::filesystem::exists(host_font2_dir)) {
-        std::filesystem::create_directory(host_font2_dir);
+        std::filesystem::create_directories(host_font2_dir);
     }
     mnt->Mount(host_font2_dir, guest_font_dir);
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(85, "filesystem mounts complete");
+#endif
 
     if (std::filesystem::is_empty(host_font_dir) || std::filesystem::is_empty(host_font2_dir)) {
         LOG_WARNING(Loader, "No dumped system fonts, expect missing text or instability");
@@ -454,6 +504,10 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
 
     // Initialize kernel and library facilities.
     Libraries::InitHLELibs(&linker->GetHLESymbols());
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(90, "HLE libraries initialized");
+    ShadIOSSetCoreStage(91, "loading game module");
+#endif
 
     // Load the module with the linker
     if (linker->LoadModule(eboot_path) == -1) {
@@ -461,6 +515,9 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
                      Common::FS::PathToUTF8String(std::filesystem::absolute(eboot_path)));
         std::quick_exit(0);
     }
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(100, "game module loaded");
+#endif
 
 #ifdef ENABLE_DISCORD_RPC
     // Discord RPC
@@ -483,6 +540,10 @@ void Emulator::Run(std::filesystem::path file, std::vector<std::string> args,
             }
         });
     }
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+    ShadIOSSetCoreStage(110, "linker execute requested");
+#endif
 
     linker->Execute(args);
 

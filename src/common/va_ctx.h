@@ -2,13 +2,30 @@
 //  SPDX-License-Identifier: GPL-2.0-or-later
 #pragma once
 
-#include <xmmintrin.h>
 #include "common/types.h"
+
+#if defined(__x86_64__) || defined(_M_X64)
+#include <xmmintrin.h>
+#endif
+
+namespace Common {
+
+#if defined(__x86_64__) || defined(_M_X64)
+using VaFpReg = __m128;
+#else
+struct alignas(16) VaFpReg {
+    u64 lo;
+    u64 hi;
+};
+#endif
+
+} // namespace Common
 
 #define VA_ARGS                                                                                    \
     uint64_t rdi, uint64_t rsi, uint64_t rdx, uint64_t rcx, uint64_t r8, uint64_t r9,              \
-        uint64_t overflow_arg_area, __m128 xmm0, __m128 xmm1, __m128 xmm2, __m128 xmm3,            \
-        __m128 xmm4, __m128 xmm5, __m128 xmm6, __m128 xmm7
+        uint64_t overflow_arg_area, ::Common::VaFpReg xmm0, ::Common::VaFpReg xmm1,                \
+        ::Common::VaFpReg xmm2, ::Common::VaFpReg xmm3, ::Common::VaFpReg xmm4,                    \
+        ::Common::VaFpReg xmm5, ::Common::VaFpReg xmm6, ::Common::VaFpReg xmm7
 
 #define VA_CTX(ctx)                                                                                \
     alignas(16)::Common::VaCtx ctx{};                                                              \
@@ -44,7 +61,7 @@ struct VaList {
 
 struct VaRegSave {
     u64 gp[6];
-    __m128 fp[8];
+    VaFpReg fp[8];
 };
 
 struct VaCtx {

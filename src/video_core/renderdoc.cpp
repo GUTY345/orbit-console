@@ -9,6 +9,10 @@
 #include <atomic>
 #include <renderdoc_app.h>
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -31,6 +35,11 @@ static std::atomic<u32> screenshot_with_overlays_count{0};
 RENDERDOC_API_1_6_0* rdoc_api{};
 
 void LoadRenderDoc() {
+#if defined(__APPLE__) && TARGET_OS_IOS
+    // RenderDoc desktop injection is not available inside an iPadOS app sandbox and can block
+    // startup while the core is still coming online. Keep iOS boot deterministic.
+    return;
+#endif
 #ifdef WIN32
 
     // Check if we are running by RDoc GUI

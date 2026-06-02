@@ -22,8 +22,11 @@ typedef int socklen_t;
 typedef int net_socket;
 #endif
 #if defined(__APPLE__)
+#include <TargetConditionals.h>
 #include <net/if_dl.h>
+#if !TARGET_OS_IPHONE
 #include <net/route.h>
+#endif
 #endif
 #if defined(__linux__) || defined(__FreeBSD__)
 #include <fstream>
@@ -66,13 +69,17 @@ bool NetUtilInternal::RetrieveEthernetAddr() {
         memcpy(ether_address.data(), info[0].Address, 6);
         return true;
     }
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+    ether_address = {0x02, 0x00, 0x00, 0x12, 0x34, 0x56};
+    LOG_INFO(Lib_Net, "Using iOS mock ethernet address");
+    return true;
 #elif defined(__APPLE__)
     ifaddrs* ifap;
 
     if (getifaddrs(&ifap) == 0) {
         ifaddrs* p;
         for (p = ifap; p; p = p->ifa_next) {
-            if (p->ifa_addr->sa_family == AF_LINK) {
+            if (p->ifa_addr && p->ifa_addr->sa_family == AF_LINK) {
                 sockaddr_dl* sdp = reinterpret_cast<sockaddr_dl*>(p->ifa_addr);
                 memcpy(ether_address.data(), sdp->sdl_data + sdp->sdl_nlen, 6);
                 freeifaddrs(ifap);
@@ -165,6 +172,10 @@ bool NetUtilInternal::RetrieveDefaultGateway() {
     }
 
     return false;
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+    default_gateway = "192.168.1.1";
+    LOG_INFO(Lib_Net, "Using iOS mock default gateway {}", default_gateway);
+    return true;
 #elif defined(__APPLE__)
     // adapted from
     // https://github.com/seladb/PcapPlusPlus/blob/a49a79e0b67b402ad75ffa96c1795def36df75c8/Pcap%2B%2B/src/PcapLiveDevice.cpp#L1236

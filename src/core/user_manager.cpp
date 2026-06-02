@@ -139,10 +139,9 @@ Users UserManager::CreateDefaultUsers() {
         const auto user_dir = EmulatorSettings.GetHomeDir() / std::to_string(u.user_id);
 
         if (!std::filesystem::exists(user_dir)) {
-            std::filesystem::create_directory(user_dir);
-            std::filesystem::create_directory(user_dir / "savedata");
-            std::filesystem::create_directory(user_dir / "trophy");
-            std::filesystem::create_directory(user_dir / "inputs");
+            std::filesystem::create_directories(user_dir / "savedata");
+            std::filesystem::create_directories(user_dir / "trophy");
+            std::filesystem::create_directories(user_dir / "inputs");
         }
     }
 

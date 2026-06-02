@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/serdes.h"
+#include "common/ios_low_memory.h"
 #include "core/emulator_settings.h"
 #include "shader_recompiler/frontend/fetch_shader.h"
 #include "shader_recompiler/info.h"
@@ -18,6 +19,30 @@ static constexpr u32 PipelineKeyVersion = 1u;
 } // namespace Serialization
 
 namespace Vulkan {
+
+static void InstallMinimalPipelineCacheProfile(const Shader::Profile& profile) {
+    std::vector<u8> profile_data{};
+    Storage::DataBase::Instance().Load(Storage::BlobType::ShaderProfile, "profile", profile_data);
+
+    const bool has_valid_profile =
+        profile_data.size() == sizeof(profile) &&
+        std::memcmp(profile_data.data(), &profile, sizeof(profile)) == 0;
+
+    Storage::DataBase::Instance().FinishPreload();
+
+    if (has_valid_profile) {
+        LOG_INFO(Render, "iOS low-memory mode: minimal pipeline cache profile is already valid");
+        return;
+    }
+
+    profile_data.resize(sizeof(profile));
+    std::memcpy(profile_data.data(), &profile, sizeof(profile));
+    Storage::DataBase::Instance().Save(Storage::BlobType::ShaderProfile, "profile",
+                                       std::move(profile_data));
+    LOG_INFO(Render,
+             "iOS low-memory mode: installed minimal pipeline cache profile fallback without "
+             "preloading full pipelines");
+}
 
 void RegisterPipelineData(const ComputePipelineKey& key,
                           ComputePipeline::SerializationSupport& sdata) {
@@ -296,6 +321,14 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
 
 void PipelineCache::WarmUp() {
     if (!EmulatorSettings.IsPipelineCacheEnabled()) {
+        return;
+    }
+    if (Common::IOSLowMemory::ShouldSkipPipelineWarmup()) {
+        LOG_INFO(Render,
+                 "iOS low-memory mode: using minimal pipeline cache fallback instead of full "
+                 "warmup to avoid launch RAM spike");
+        Storage::DataBase::Instance().Open();
+        InstallMinimalPipelineCacheProfile(profile);
         return;
     }
 

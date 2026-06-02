@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/elf_info.h"
+#include "common/ios_low_memory.h"
 #include "common/io_file.h"
 #include "common/polyfill_thread.h"
 #include "common/thread.h"
@@ -178,11 +179,23 @@ void LoadVector(BlobType type, std::filesystem::path& path, std::vector<T>& v) {
         }
         mz_zip_archive_file_stat stat{};
         mz_zip_reader_file_stat(&zip_ar, index, &stat);
+        if (Common::IOSLowMemory::ShouldDropCacheBlob(stat.m_uncomp_size)) {
+            LOG_WARNING(Render,
+                        "iOS low-memory mode: skipping large archived cache blob {} ({} MiB)",
+                        path.string(), stat.m_uncomp_size / 1_MB);
+            return;
+        }
         v.resize(stat.m_uncomp_size / sizeof(T));
         mz_zip_reader_extract_to_mem(&zip_ar, index, v.data(), stat.m_uncomp_size, 0);
     } else {
         const auto file = IOFile{path, FileAccessMode::Read};
-        v.resize(file.GetSize() / sizeof(T));
+        const auto file_size = file.GetSize();
+        if (Common::IOSLowMemory::ShouldDropCacheBlob(file_size)) {
+            LOG_WARNING(Render, "iOS low-memory mode: skipping large cache blob {} ({} MiB)",
+                        path.string(), file_size / 1_MB);
+            return;
+        }
+        v.resize(file_size / sizeof(T));
         file.Read(v);
     }
 }

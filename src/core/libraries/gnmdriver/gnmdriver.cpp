@@ -24,6 +24,14 @@
 #include "video_core/amdgpu/pm4_cmds.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
+#endif
+
 extern Frontend::WindowSDL* g_window;
 std::unique_ptr<Vulkan::Presenter> presenter;
 std::unique_ptr<AmdGpu::Liverpool> liverpool;
@@ -76,6 +84,41 @@ static u32 asc_next_offs_dw[Liverpool::NumComputeRings];
 // This address is initialized in sceGnmGetTheTessellationFactorRingBufferBaseAddress
 static VAddr tessellation_factors_ring_addr = -1;
 static constexpr u32 tessellation_offchip_buffer_size = 0x800000u;
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+static void LogIOSGnm(const char* message) {
+    ShadIOSAppendDiagnosticLog(message);
+}
+#else
+static void LogIOSGnm(const char*) {}
+#endif
+
+bool EnsurePresenterReady() {
+    if (presenter != nullptr) {
+        return true;
+    }
+    if (liverpool == nullptr) {
+        LogIOSGnm("GnmDriver creating Liverpool for deferred presenter");
+        liverpool = std::make_unique<AmdGpu::Liverpool>();
+    }
+    if (g_window == nullptr) {
+        LogIOSGnm("GnmDriver presenter deferred: frontend window is null");
+        return false;
+    }
+    try {
+        LogIOSGnm("GnmDriver creating Vulkan presenter");
+        presenter = std::make_unique<Vulkan::Presenter>(*g_window, liverpool.get());
+        LogIOSGnm("GnmDriver Vulkan presenter ready");
+        return true;
+    } catch (const std::exception& ex) {
+        LogIOSGnm("GnmDriver Vulkan presenter exception");
+        LOG_CRITICAL(Lib_GnmDriver, "Failed to initialize Vulkan presenter: {}", ex.what());
+    } catch (...) {
+        LogIOSGnm("GnmDriver Vulkan presenter unknown exception");
+        LOG_CRITICAL(Lib_GnmDriver, "Failed to initialize Vulkan presenter with unknown error");
+    }
+    return false;
+}
 
 static void ResetSubmissionLock(Platform::InterruptId irq) {
     std::unique_lock lock{m_submission};
@@ -2876,20 +2919,32 @@ int PS4_SYSV_ABI Func_F916890425496553() {
 
 void RegisterLib(Core::Loader::SymbolsResolver* sym) {
     LOG_INFO(Lib_GnmDriver, "Initializing presenter");
+    LogIOSGnm("GnmDriver RegisterLib begin");
+    LogIOSGnm("GnmDriver creating Liverpool");
     liverpool = std::make_unique<AmdGpu::Liverpool>();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    LogIOSGnm("GnmDriver deferring Vulkan presenter on iOS");
+#else
+    LogIOSGnm("GnmDriver creating Vulkan presenter during RegisterLib");
     presenter = std::make_unique<Vulkan::Presenter>(*g_window, liverpool.get());
+    LogIOSGnm("GnmDriver Vulkan presenter ready during RegisterLib");
+#endif
 
+    LogIOSGnm("GnmDriver reading SDK version");
     const s32 result = sceKernelGetCompiledSdkVersion(&sdk_version);
     if (result != ORBIS_OK) {
         sdk_version = 0;
     }
 
+    LogIOSGnm("GnmDriver optional copy buffer reserve");
     if (EmulatorSettings.IsCopyGpuBuffers()) {
         liverpool->ReserveCopyBufferSpace();
     }
 
+    LogIOSGnm("GnmDriver registering GPU idle IRQ");
     Platform::IrqC::Instance()->Register(Platform::InterruptId::GpuIdle, ResetSubmissionLock,
                                          nullptr);
+    LogIOSGnm("GnmDriver registering symbols");
 
     LIB_FUNCTION("b0xyllnVY-I", "libSceGnmDriver", 1, "libSceGnmDriver", sceGnmAddEqEvent);
     LIB_FUNCTION("b08AgtPlHPg", "libSceGnmDriver", 1, "libSceGnmDriver", sceGnmAreSubmitsAllowed);
@@ -3249,6 +3304,7 @@ void RegisterLib(Core::Loader::SymbolsResolver* sym) {
                  Func_4774D83BB4DDBF9A);
     LIB_FUNCTION("ut57TBmRQN0", "libSceGnmWaitFreeSubmit", 1, "libSceGnmDriver",
                  Func_BADE7B4C199140DD);
+    LogIOSGnm("GnmDriver RegisterLib complete");
 };
 
 } // namespace Libraries::GnmDriver

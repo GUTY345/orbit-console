@@ -11,6 +11,10 @@
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_swapchain.h"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 namespace Vulkan {
 
 static constexpr vk::SurfaceFormatKHR SURFACE_FORMAT_HDR = {
@@ -77,6 +81,8 @@ void Swapchain::Create(u32 width_, u32 height_) {
 
     SetupImages();
     RefreshSemaphores();
+    LOG_INFO(Render_Vulkan, "Swapchain created: requested={}x{} extent={}x{} images={} present={}",
+             width, height, extent.width, extent.height, image_count, vk::to_string(present_mode));
 }
 
 void Swapchain::Recreate(u32 width_, u32 height_) {
@@ -139,10 +145,18 @@ bool Swapchain::Present() {
 
     auto result = instance.GetPresentQueue().presentKHR(present_info);
     if (result == vk::Result::eErrorOutOfDateKHR || result == vk::Result::eSuboptimalKHR) {
+        LOG_WARNING(Render_Vulkan, "Swapchain present requested recreation: {}",
+                    vk::to_string(result));
+        needs_recreation = true;
+    } else if (result != vk::Result::eSuccess) {
+        LOG_ERROR(Render_Vulkan, "Swapchain present failed: {}", vk::to_string(result));
         needs_recreation = true;
     } else {
-        ASSERT_MSG(result == vk::Result::eSuccess, "Swapchain presentation failed: {}",
-                   vk::to_string(result));
+        static u32 logged_present_count = 0;
+        if (logged_present_count++ < 3) {
+            LOG_INFO(Render_Vulkan, "Swapchain presented frame {} image {}", logged_present_count,
+                     image_index);
+        }
     }
 
     frame_index = (frame_index + 1) % image_count;
@@ -200,6 +214,12 @@ void Swapchain::FindPresentMode() {
     }
 
     const auto requested_mode = EmulatorSettings.GetPresentMode();
+#if defined(__APPLE__) && TARGET_OS_IOS
+    // MoltenVK on iPadOS is most stable when UIKit, CAMetalLayer and Vulkan are paced by FIFO.
+    present_mode = vk::PresentModeKHR::eFifo;
+    LOG_INFO(Render_Vulkan, "iOS forcing FIFO present mode (requested {}).", requested_mode);
+    return;
+#endif
     if (requested_mode == "Mailbox") {
         present_mode = vk::PresentModeKHR::eMailbox;
     } else if (requested_mode == "Fifo") {

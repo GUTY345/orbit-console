@@ -1,206 +1,231 @@
-<!--
-SPDX-FileCopyrightText: 2026 shadPS4 Emulator Project
-SPDX-License-Identifier: GPL-2.0-or-later
--->
+# Orbit Console
 
-<h1 align="center">
-  <br>
-  <a href="https://shadps4.net/"><img src="https://github.com/shadps4-emu/shadPS4/blob/main/.github/shadps4.png" width="220"></a>
-  <br>
-  <b>shadPS4</b>
-  <br>
-</h1>
+Orbit Console is an experimental iPadOS port/fork of the shadPS4 PlayStation 4 emulator core.
+The goal of this branch is to explore a native iPad experience with UIKit, Metal/MoltenVK,
+controller/touch overlays, low-memory diagnostics, and an ARM64 compatibility bridge for testing
+PS4 titles on iPadOS.
 
-<h1 align="center">
- <a href="https://discord.gg/bFJxfftGW6">
-        <img src="https://img.shields.io/discord/1080089157554155590?color=5865F2&label=shadPS4%20Discord&logo=Discord&logoColor=white" width="275">
- <a href="https://github.com/shadps4-emu/shadPS4/releases/latest">
-        <img src="https://img.shields.io/github/downloads/shadps4-emu/shadPS4/total.svg" width="140">
- <a href="https://shadps4.net/">
-        <img src="https://img.shields.io/badge/shadPS4-website-8A2BE2" width="150">
- <a href="https://x.com/shadps4">
-        <img src="https://img.shields.io/badge/-Join%20us-black?logo=X&logoColor=white" width="100">
- <a href="https://github.com/shadps4-emu/shadPS4/stargazers">
-        <img src="https://img.shields.io/github/stars/shadps4-emu/shadPS4" width="120">
-</h1>
+> Important: this project is experimental research software. It is not a finished PS4 emulator for
+> iPad yet. The current iPadOS work focuses on app shell, game library UI, input plumbing, memory
+> survival, diagnostics, and early core bring-up.
 
-|               Bloodborne by From Software                   |                     Hatsune Miku Project DIVA Future Tone by SEGA                         |
-| :-----------------------------------------------------------: | :--------------------------------------------------------------------------------------------: |
-| ![Bloodborne screenshot](./documents/Screenshots/1.png) | ![Project DIVA screenshot](./documents/Screenshots/2.png) |
+## Current Status
 
-|                  Yakuza 0 by SEGA                     |                 DRIVECLUB™ by Evolution Studios                    |
-| :------------------------------------------------------------------------: | :------------------------------------------------------------------: |
-| ![Yakuza screenshot](./documents/Screenshots/3.png) | ![DRIVECLUB screenshot](./documents/Screenshots/4.png) |
+Working or partially working:
 
-# General information
+- Native iPadOS app shell branded as **Orbit Console**
+- PS4-style dashboard UI and settings panels
+- Game import/library UI
+- Full-screen iPad layout
+- Virtual controller overlay
+- Bluetooth controller input path
+- Metal/MoltenVK view bridging
+- iOS low-memory mode and sandbox backing file path
+- StikDebug/JIT handshake delay path
+- Diagnostic log file at `Documents/orbit_console_cpu.log`
+- Chunked ELF segment loading diagnostics
+- Experimental ARM64 custom CPU bridge scaffold
 
-**shadPS4** is an early **PlayStation 4** emulator for **Windows**, **Linux** and **macOS** written in C++.
+Still incomplete:
 
-> [!IMPORTANT]
-> This is the emulator core, which does not include a GUI. If you just want to use the emulator as an end user, download the [**QtLauncher**](https://github.com/shadps4-emu/shadps4-qtlauncher/releases) instead.
+- Full x86-64 to ARM64 dynarec/JIT backend
+- Complete x86-64 decoder coverage
+- Complete SSE/AVX instruction support
+- Full guest thread/TLS/exception parity
+- Stable GPU presentation for real gameplay
+- Finished audio output path on iPadOS
 
-If you encounter problems or have doubts, do not hesitate to look at the [**Quickstart**](https://github.com/shadps4-emu/shadPS4/wiki/I.-Quick-start-%5BUsers%5D).\
-To verify that a game works, you can look at [**shadPS4 Game Compatibility**](https://github.com/shadps4-compatibility/shadps4-game-compatibility).\
-To discuss shadPS4 development, suggest ideas or to ask for help, join our [**Discord server**](https://discord.gg/bFJxfftGW6).\
-To get the latest news, go to our [**X (Twitter)**](https://x.com/shadps4) or our [**website**](https://shadps4.net/).\
-You can donate to the project via our [**Kofi page**](https://ko-fi.com/shadps4).
+## Upstream Credit
 
-# Status
+This project is based on [shadPS4](https://github.com/shadps4-emu/shadPS4), an early PlayStation 4
+emulator for Windows, Linux, and macOS written in C++.
 
-> [!IMPORTANT]
-> shadPS4 is early in development, don't expect a flawless experience.
+All original shadPS4 copyright and GPL licensing terms remain in effect.
 
-Currently, the emulator can successfully run games like [**Bloodborne**](https://www.youtube.com/watch?v=5sZgWyVflFM), [**Dark Souls Remastered**](https://www.youtube.com/watch?v=-3PA-Xwszts), [**Red Dead Redemption**](https://www.youtube.com/watch?v=Al7yz_5nLag), and many other games.
+## Requirements
 
-# Why
+- macOS with Xcode installed
+- iPad running iPadOS 18+
+- Apple development signing configured in Xcode
+- StikDebug or equivalent JIT/debug attach workflow for iPadOS testing
+- CMake and the dependencies already prepared by the generated `build_ios` project
 
-This project began for fun. Given our limited free time, it may take some time before shadPS4 can run more complex games, but we're committed to making small, regular updates.
+The current local test device used by this branch:
 
-# Building
-
-## Docker
-
-For building shadPS4 in a containerized environment using Docker and VSCode, check the instructions here:  
-[**Docker Build Instructions**](https://github.com/shadps4-emu/shadPS4/blob/main/documents/building-docker.md)
-
-## Windows
-
-Check the build instructions for [**Windows**](https://github.com/shadps4-emu/shadPS4/blob/main/documents/building-windows.md).
-
-## Linux
-
-Check the build instructions for [**Linux**](https://github.com/shadps4-emu/shadPS4/blob/main/documents/building-linux.md).
-
-## macOS
-
-Check the build instructions for [**macOS**](https://github.com/shadps4-emu/shadPS4/blob/main/documents/building-macos.md).
-
-> [!IMPORTANT]
-> macOS users need at least macOS 15.4 to run shadPS4. Due to GPU issues there are currently heavy bugs on Intel Macs.
-
-# Usage examples
-
-> [!IMPORTANT]
-> For a user-friendly GUI, download the [**QtLauncher**](https://github.com/shadps4-emu/shadps4-qtlauncher/releases).
-
-To get the list of all available commands and also a more detailed description of what each command does, please refer to the `--help` flag's output.
-
-Below is a list of commonly used command patterns:
-```sh
-shadPS4 CUSA00001 # Searches for a game folder called CUSA00001 in the list of game install folders, and boots it.
-shadPS4 --fullscreen true --config-clean CUSA00001    # the game argument is always the last one,
-shadPS4 -g CUSA00001 --fullscreen true --config-clean # ...unless manually specified otherwise.
-shadPS4 /path/to/game.elf # Boots a PS4 ELF file directly. Useful if you want to boot an executable that is not named eboot.bin.
-shadPS4 CUSA00001 -- -flag1 -flag2 # Passes '-flag1' and '-flag2' to the game executable in argv.
+```text
+Device ID: 00008122-001C199826FA401C
+Bundle ID: com.mathachai.shadps4
+App Name: Orbit Console
 ```
 
-# Debugging and reporting issues
+Adjust those values for your own device and developer account.
 
-For more information on how to test, debug and report issues with the emulator or games, read the [**Debugging documentation**](https://github.com/shadps4-emu/shadPS4/blob/main/documents/Debugging/Debugging.md).
+## Build for iPad
 
-# Keyboard and Mouse Mappings
+From the repository root:
 
-> [!NOTE]
-> Some keyboards may also require you to hold the Fn key to use the F\* keys. Mac users should use the Command key instead of Control, and need to use Command+F11 for full screen to avoid conflicting with system key bindings.
+```sh
+xcodebuild \
+  -project build_ios/shadPS4.xcodeproj \
+  -scheme shadps4 \
+  -configuration Debug \
+  -destination 'id=YOUR_DEVICE_ID' \
+  DEVELOPMENT_TEAM=YOUR_TEAM_ID \
+  PRODUCT_BUNDLE_IDENTIFIER=com.yourname.orbitconsole \
+  CODE_SIGN_STYLE=Automatic \
+  CODE_SIGN_IDENTITY='Apple Development' \
+  build
+```
 
-| Button | Function |
-|-------------|-------------|
-F10 | FPS Counter
-Ctrl+F10 | Video Debug Info
-F11 | Fullscreen
-F12 | Trigger RenderDoc Capture (or game-only screenshot if RenderDoc is unavailable)
-Alt+F12 | Capture screenshot including HUD/dialog overlays
+Example local command:
 
-> [!NOTE]
-> Xbox and DualShock controllers work out of the box.
+```sh
+xcodebuild \
+  -project build_ios/shadPS4.xcodeproj \
+  -scheme shadps4 \
+  -configuration Debug \
+  -destination 'id=00008122-001C199826FA401C' \
+  DEVELOPMENT_TEAM=4HX756P7TJ \
+  PRODUCT_BUNDLE_IDENTIFIER=com.mathachai.shadps4 \
+  CODE_SIGN_STYLE=Automatic \
+  CODE_SIGN_IDENTITY='Apple Development' \
+  build
+```
 
-| Controller button | Keyboard equivalent |
-|-------------|-------------|
-LEFT AXIS UP | W |
-LEFT AXIS DOWN | S |
-LEFT AXIS LEFT | A |
-LEFT AXIS RIGHT | D |
-RIGHT AXIS UP | I |
-RIGHT AXIS DOWN | K |
-RIGHT AXIS LEFT | J |
-RIGHT AXIS RIGHT | L |
-TRIANGLE | Numpad 8 or C |
-CIRCLE | Numpad 6 or B |
-CROSS | Numpad 2 or N |
-SQUARE | Numpad 4 or V |
-PAD UP | UP |
-PAD DOWN | DOWN |
-PAD LEFT | LEFT |
-PAD RIGHT | RIGHT |
-OPTIONS | RETURN |
-BACK BUTTON / TOUCH PAD | SPACE |
-L1 | Q |
-R1 | U |
-L2 | E |
-R2 | O |
-L3 | X |
-R3 | M |
+## Install on iPad
 
-Keyboard and mouse inputs can be customized in the settings menu by clicking the Controller button, and further details and help on controls are  also found there. Custom bindings are saved per-game. Inputs support up to three keys per binding, mouse buttons, mouse movement mapped to joystick input, and more.
+```sh
+xcrun devicectl device install app \
+  --device YOUR_DEVICE_ID \
+  "build_ios/Debug-iphoneos/Orbit Console.app"
+```
 
+Example local command:
 
-# Firmware files
+```sh
+xcrun devicectl device install app \
+  --device 00008122-001C199826FA401C \
+  "/Users/mathachai/Downloads/shadPS4-main/build_ios/Debug-iphoneos/Orbit Console.app"
+```
 
-shadPS4 can load some PlayStation 4 firmware files.
-The following firmware modules are supported and must be placed in shadPS4's `sys_modules` folder.
+## Testing Games
 
-<div align="center">
+1. Install Orbit Console on the iPad.
+2. Open/attach using StikDebug before starting a game.
+3. Open Orbit Console.
+4. Add a game folder or `eboot.bin` through the dashboard.
+5. Start the game from the dashboard.
+6. If the app exits or returns to dashboard, pull the diagnostic log.
 
-| Modules                  | Modules                  | Modules                  | Modules                  |
-|--------------------------|--------------------------|--------------------------|--------------------------|
-| libSceAudiodec.sprx      | libSceCesCs.sprx         | libSceFont.sprx          | libSceFontFt.sprx        |
-| libSceFreeTypeOt.sprx    | libSceJpegDec.sprx       | libSceJpegEnc.sprx       | libSceJson.sprx          |
-| libSceJson2.sprx         | libSceLibcInternal.sprx  | libSceNgs2.sprx          | libScePngEnc.sprx        |
-| libSceRtc.sprx           | libSceSystemGesture.sprx | libSceUlt.sprx           |                          |
-</div>
+Only test games that you legally own and have dumped yourself.
 
-> [!Caution]
-> The above modules are required to run the games properly and must be dumped from your legally owned PlayStation 4 console.
+## Pull Diagnostic Logs
 
+Orbit Console writes a lightweight diagnostic log into the app container:
 
+```text
+Documents/orbit_console_cpu.log
+```
 
-# Main team
+Copy it from the iPad:
 
-- [**georgemoralis**](https://github.com/georgemoralis)
-- [**psucien**](https://github.com/psucien)
-- [**viniciuslrangel**](https://github.com/viniciuslrangel)
-- [**roamic**](https://github.com/roamic)
-- [**squidbus**](https://github.com/squidbus)
-- [**frodo**](https://github.com/baggins183)
-- [**Stephen Miller**](https://github.com/StevenMiller123)
-- [**kalaposfos13**](https://github.com/kalaposfos13)
+```sh
+xcrun devicectl device copy from \
+  --device YOUR_DEVICE_ID \
+  --domain-type appDataContainer \
+  --domain-identifier com.yourname.orbitconsole \
+  --source Documents/orbit_console_cpu.log \
+  --destination ~/Desktop/orbit_console_cpu.log
+```
 
-Logo is done by [**Xphalnos**](https://github.com/Xphalnos)
+Example local command:
 
-<a href="https://github.com/shadps4-emu/shadPS4/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=shadps4-emu/shadPS4&max=24">
-</a>
+```sh
+xcrun devicectl device copy from \
+  --device 00008122-001C199826FA401C \
+  --domain-type appDataContainer \
+  --domain-identifier com.mathachai.shadps4 \
+  --source Documents/orbit_console_cpu.log \
+  --destination ~/Desktop/orbit_console_cpu.log
+```
 
-# Contributing
+View the latest lines:
 
-If you want to contribute, please read the [**CONTRIBUTING.md**](https://github.com/shadps4-emu/shadPS4/blob/main/CONTRIBUTING.md) file.\
-Open a PR and we'll check it :)
+```sh
+tail -300 ~/Desktop/orbit_console_cpu.log
+```
 
+Useful log markers:
 
-# Special Thanks
+```text
+core stage 90: HLE libraries initialized
+core stage 91: loading game module
+Module loading segment bytes
+ELF LoadSegment begin
+ELF LoadSegment progress
+ELF LoadSegment complete
+CustomCPUTranslator unsupported opcode
+```
 
-A few noteworthy teams/projects who've helped us along the way are:
+## iPadOS Notes
 
-- [**Panda3DS**](https://github.com/wheremyfoodat/Panda3DS): A multiplatform 3DS emulator from our co-author wheremyfoodat. They have been incredibly helpful in understanding and solving problems that came up from natively executing the x64 code of PS4 binaries
+iPadOS has stricter limits than macOS:
 
-- [**fpPS4**](https://github.com/red-prig/fpPS4): The fpPS4 team has assisted massively with understanding some of the more complex parts of the PS4 operating system and libraries, by helping with reverse engineering work and research.
+- No Rosetta 2 on iPadOS
+- No native x86-64 execution
+- JIT requires an external/debug attach path
+- Free developer accounts have tighter memory limits
+- Large contiguous virtual memory reservations can fail
+- `shm_open` is not available the same way as desktop macOS
 
-- **yuzu**: Our shader compiler has been designed with yuzu's Hades compiler as a blueprint. This allowed us to focus on the challenges of emulating a modern AMD GPU while having a high-quality optimizing shader compiler implementation as a base.
+This fork uses a compact iOS address-space path and a sandbox backing file to get further into
+module loading on device.
 
-- [**felix86**](https://github.com/OFFTKP/felix86): A new x86-64 → RISC-V Linux userspace emulator
+## CPU Bridge Status
 
-- [**emudev.org**](https://emudev.org/): A network of people interested in the documentation, emulation, simulation and re-implementation of hardware near extinction . Belongs to my friend skmp and me (shadow) also a member of it
+The current ARM64 custom CPU bridge is a scaffold, not a complete replacement for Rosetta/FEX/Box64.
+It currently provides:
 
-# License
+- x86-64 register context
+- RFLAGS basics
+- REX/ModRM/SIB/RIP-relative decode helpers
+- selected integer instructions
+- selected XMM/SSE instructions
+- unsupported-opcode logging with Zydis disassembly
+- safe suspend path instead of crashing on unknown instructions
 
-- [**GPL-2.0 license**](https://github.com/shadps4-emu/shadPS4/blob/main/LICENSE)
+For real gameplay, the project still needs either:
+
+- a real x86-64 interpreter with broad opcode/SIMD coverage, or
+- a real x86-64 to AArch64 dynarec/JIT backend with block cache and iPadOS JIT support.
+
+## Repository Hygiene
+
+Recommended before pushing to your own GitHub repo:
+
+```sh
+git remote remove origin
+git remote add origin https://github.com/GUTY345/orbit-console.git
+git branch -M main
+git push -u origin main
+```
+
+Do not commit local build output unless you intentionally want it in the repo. Common folders to
+avoid committing:
+
+```text
+build_ios/
+.codex_backups/
+DerivedData/
+*.xcuserdata
+```
+
+## Legal
+
+This project does not include PS4 firmware, system modules, games, copyrighted assets, or keys.
+You are responsible for using files dumped from hardware and games you legally own.
+
+## License
+
+Orbit Console is a fork/port of shadPS4 and remains licensed under GPL-2.0-or-later.
+See [LICENSE](LICENSE) for details.

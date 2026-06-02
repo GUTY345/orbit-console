@@ -194,7 +194,7 @@ void SigactionHandler(int native_signum, siginfo_t* inf, ucontext_t* raw_context
     const auto handler = Handlers[NativeToOrbisSignal(native_signum)];
     if (handler) {
         auto ctx = Ucontext{};
-#ifdef __APPLE__
+#if defined(__APPLE__) && defined(__x86_64__)
         const auto& regs = raw_context->uc_mcontext->__ss;
         ctx.uc_mcontext.mc_r8 = regs.__r8;
         ctx.uc_mcontext.mc_r9 = regs.__r9;
@@ -215,6 +215,12 @@ void SigactionHandler(int native_signum, siginfo_t* inf, ucontext_t* raw_context
         ctx.uc_mcontext.mc_fs = regs.__fs;
         ctx.uc_mcontext.mc_gs = regs.__gs;
         ctx.uc_mcontext.mc_rip = regs.__rip;
+        ctx.uc_mcontext.mc_addr = reinterpret_cast<uint64_t>(inf->si_addr);
+#elif defined(__APPLE__) && defined(__aarch64__)
+        const auto& regs = raw_context->uc_mcontext->__ss;
+        ctx.uc_mcontext.mc_rsp = regs.__sp;
+        ctx.uc_mcontext.mc_rbp = regs.__fp;
+        ctx.uc_mcontext.mc_rip = regs.__pc;
         ctx.uc_mcontext.mc_addr = reinterpret_cast<uint64_t>(inf->si_addr);
 #elif defined(__FreeBSD__)
         const auto& regs = raw_context->uc_mcontext;

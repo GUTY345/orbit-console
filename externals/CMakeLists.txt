@@ -29,6 +29,10 @@ if (TARGET fmt::fmt)
 endif()
 add_subdirectory(spdlog EXCLUDE_FROM_ALL SYSTEM)
 target_compile_definitions(spdlog PUBLIC SPDLOG_FUNCTION=__func__)
+target_include_directories(spdlog PUBLIC
+    "${CMAKE_SOURCE_DIR}/externals/fmt/include"
+    "${CMAKE_BINARY_DIR}/_deps/fmt-src/include"
+)
 
 # fmtlib
 if (NOT TARGET fmt::fmt)
@@ -244,9 +248,9 @@ if (APPLE OR ${CMAKE_SYSTEM_NAME} STREQUAL "FreeBSD")
         option(USE_SYSTEM_TZ_DB "" ON)
         add_subdirectory(date)
     endif()
-    if (NOT TARGET epoll-shim)
-        add_subdirectory(epoll-shim)
-    endif()
+    #if (NOT TARGET epoll-shim)
+     #   add_subdirectory(epoll-shim)
+    #endif()
 endif()
 
 # Apple-only dependencies

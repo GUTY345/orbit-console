@@ -138,6 +138,13 @@ public:
             LOG_DEBUG(Lib_AudioOut, "Audio underrun detected (queued: {}), restarting source",
                       queued);
             alSourcePlay(source);
+            if (alGetError() != AL_NO_ERROR) {
+                ReinitializeOpenALObjects("alSourcePlay failed after underrun");
+            }
+            alGetSourcei(source, AL_SOURCE_STATE, &state);
+            if (state != AL_PLAYING) {
+                ReinitializeOpenALObjects("source failed to resume");
+            }
         }
 
         // Only sleep if we have healthy buffer queue
@@ -505,6 +512,21 @@ private:
         return true;
     }
 
+    bool ReinitializeOpenALObjects(const char* reason) {
+        LOG_WARNING(Lib_AudioOut, "Reinitializing OpenAL source: {}", reason);
+        Cleanup();
+        if (!device_context || !device_context->MakeCurrent(device_name)) {
+            return false;
+        }
+        if (!CreateOpenALObjects()) {
+            return false;
+        }
+        current_gain.store(EmulatorSettings.GetVolumeSlider() * 0.01f, std::memory_order_relaxed);
+        alSourcef(source, AL_GAIN, current_gain.load(std::memory_order_relaxed));
+        alSourcePlay(source);
+        return alGetError() == AL_NO_ERROR;
+    }
+
     bool SelectConverter() {
         if (is_float && use_native_float) {
             // Native float - just copy/remap if needed
@@ -711,7 +733,7 @@ private:
             d[i] = OrbisFloatToS16(s[i]);
         }
     }
-#elif
+#else
     static void ConvertF32ToS16Stereo(const void* src, void* dst, u32 frames, const float*) {
         const float* s = static_cast<const float*>(src);
         s16* d = static_cast<s16*>(dst);
@@ -755,7 +777,7 @@ private:
             d[i] = OrbisFloatToS16(s[i]);
         }
     }
-#elif
+#else
     static void ConvertF32ToS16_8CH(const void* src, void* dst, u32 frames, const float*) {
         const float* s = static_cast<const float*>(src);
         s16* d = static_cast<s16*>(dst);

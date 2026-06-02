@@ -210,4 +210,8 @@ void InitializeTLS() {
     std::call_once(init_tls_flag, [] { SetTcbBase(Libraries::Kernel::g_curthread->tcb); });
 }
 
+void EnsureThreadInitialized() {
+    InitializeTLS();
+}
+
 } // namespace Core

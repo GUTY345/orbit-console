@@ -6,6 +6,7 @@
 #include "common/thread.h"
 #include "core/debug_state.h"
 #include "core/emulator_settings.h"
+#include "core/libraries/gnmdriver/gnmdriver.h"
 #include "core/libraries/kernel/time.h"
 #include "core/libraries/videoout/driver.h"
 #include "core/libraries/videoout/videoout_error.h"
@@ -13,10 +14,32 @@
 #include "video_core/amdgpu/liverpool.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
 
+#include <string>
+
 extern std::unique_ptr<Vulkan::Presenter> presenter;
 extern std::unique_ptr<AmdGpu::Liverpool> liverpool;
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IOS
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
+#endif
+
 namespace Libraries::VideoOut {
+
+static bool EnsurePresenterForVideoOut(const char* caller) {
+    if (presenter != nullptr) {
+        return true;
+    }
+#if defined(__APPLE__) && TARGET_OS_IOS
+    std::string line = "VideoOut ensuring presenter: ";
+    line += caller;
+    ShadIOSAppendDiagnosticLog(line.c_str());
+#endif
+    return Libraries::GnmDriver::EnsurePresenterReady();
+}
 
 constexpr static bool Is32BppPixelFormat(PixelFormat format) {
     switch (format) {
@@ -52,6 +75,10 @@ VideoOutDriver::~VideoOutDriver() = default;
 
 int VideoOutDriver::Open(const ServiceThreadParams* params) {
     if (main_port.is_open) {
+        return ORBIS_VIDEO_OUT_ERROR_RESOURCE_BUSY;
+    }
+    if (!EnsurePresenterForVideoOut("Open")) {
+        LOG_ERROR(Lib_VideoOut, "Presenter is not ready while opening video output");
         return ORBIS_VIDEO_OUT_ERROR_RESOURCE_BUSY;
     }
     main_port.is_open = true;
@@ -169,6 +196,10 @@ int VideoOutDriver::RegisterBuffers(VideoOutPort* port, s32 startIndex, void* co
         port->buffer_labels[startIndex + i] = 0;
         port->SignalVoLabel();
 
+        if (!EnsurePresenterForVideoOut("RegisterBuffers")) {
+            LOG_ERROR(Lib_VideoOut, "Presenter is not ready while registering video buffers");
+            return ORBIS_VIDEO_OUT_ERROR_RESOURCE_BUSY;
+        }
         presenter->RegisterVideoOutSurface(group, address);
         LOG_INFO(Lib_VideoOut, "buffers[{}] = {:#x}", i + startIndex, address);
     }
@@ -234,6 +265,9 @@ int VideoOutDriver::ChangeBufferAttribute(VideoOutPort* port, s32 attributeIndex
 }
 
 void VideoOutDriver::Flip(const Request& req) {
+    if (!EnsurePresenterForVideoOut("Flip")) {
+        return;
+    }
     // Update HDR status before presenting.
     presenter->SetHDR(req.port->is_hdr);
 
@@ -278,11 +312,17 @@ void VideoOutDriver::Flip(const Request& req) {
 }
 
 void VideoOutDriver::DrawBlankFrame() {
+    if (!EnsurePresenterForVideoOut("DrawBlankFrame")) {
+        return;
+    }
     const auto empty_frame = presenter->PrepareBlankFrame(false);
     presenter->Present(empty_frame);
 }
 
 void VideoOutDriver::DrawLastFrame() {
+    if (!EnsurePresenterForVideoOut("DrawLastFrame")) {
+        return;
+    }
     const auto frame = presenter->PrepareLastFrame();
     if (frame != nullptr) {
         presenter->Present(frame, true);
@@ -316,6 +356,9 @@ bool VideoOutDriver::SubmitFlip(VideoOutPort* port, s32 index, s64 flip_arg,
 }
 
 void VideoOutDriver::SubmitFlipInternal(VideoOutPort* port, s32 index, s64 flip_arg, bool is_eop) {
+    if (!EnsurePresenterForVideoOut("SubmitFlipInternal")) {
+        return;
+    }
     Vulkan::Frame* frame;
     if (index == -1) {
         frame = presenter->PrepareBlankFrame(false);
@@ -357,6 +400,11 @@ void VideoOutDriver::PresentThread(std::stop_token token) {
 
     while (!token.stop_requested()) {
         timer.Start();
+        if (presenter == nullptr) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            timer.End();
+            continue;
+        }
 
         if (DebugState.IsGuestThreadsPaused()) {
             DrawLastFrame();

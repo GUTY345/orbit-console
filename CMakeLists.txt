@@ -8,10 +8,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 if(APPLE)
-    list(APPEND ADDITIONAL_LANGUAGES OBJC)
-    # Starting with 15.4, Rosetta 2 has support for all the necessary instruction sets.
-    set(CMAKE_OSX_DEPLOYMENT_TARGET 15.4 CACHE STRING "")
+    list(APPEND ADDITIONAL_LANGUAGES OBJC OBJCXX)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET 18.0 CACHE STRING "" FORCE)
 endif()
+
+option(SHADPS4_USE_INCREASED_MEMORY_ENTITLEMENT "Enable iPadOS increased-memory-limit entitlement when the provisioning profile supports it" OFF)
 
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -55,11 +56,11 @@ else()
     message(FATAL_ERROR "Unsupported CPU architecture: ${BASE_ARCHITECTURE}")
 endif()
 
-if (ARCHITECTURE STREQUAL "x86_64")
+#if (ARCHITECTURE STREQUAL "x86_64")
     # Target x86-64-v3 CPU architecture as this is a good balance between supporting performance critical
     # instructions like AVX2 and maintaining support for older CPUs.
-    add_compile_options(-march=x86-64-v3)
-endif()
+    #add_compile_options(-march=x86-64-v3)
+#endif()
 
 if (APPLE AND ARCHITECTURE STREQUAL "x86_64" AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "arm64")
     # Exclude ARM homebrew path to avoid conflicts when cross compiling.
@@ -360,7 +361,7 @@ set(KERNEL_LIB src/core/libraries/kernel/coredump/coredump.cpp
                src/core/libraries/kernel/aio.h
 )
 
-set_source_files_properties(src/core/libraries/kernel/threads/stack.s PROPERTIES COMPILE_OPTIONS -Wno-unused-command-line-argument)
+set_source_files_properties(src/core/libraries/kernel/threads/stack.S PROPERTIES COMPILE_OPTIONS -Wno-unused-command-line-argument)
 
 set(NETWORK_LIBS src/core/libraries/network/http.cpp
                  src/core/libraries/network/http.h
@@ -742,6 +743,8 @@ set(COMMON src/common/logging/classes.h
            src/common/endian.h
            src/common/enum.h
            src/common/incremental_id.h
+           src/common/ios_low_memory.cpp
+           src/common/ios_low_memory.h
            src/common/io_file.cpp
            src/common/io_file.h
            src/common/lru_cache.h
@@ -802,6 +805,8 @@ set(CORE src/core/aerolib/stubs.cpp
          src/core/aerolib/stubs.h
          src/core/aerolib/aerolib.cpp
          src/core/aerolib/aerolib.h
+         src/core/cpu/custom_bridge/custom_cpu_translator.cpp
+         src/core/cpu/custom_bridge/custom_cpu_translator.h
          src/core/address_space.cpp
          src/core/address_space.h
          src/core/file_sys/devices/base_device.cpp
@@ -1148,6 +1153,24 @@ set(EMULATOR src/emulator.cpp
              src/sdl_window.cpp
 )
 
+set(SHADPS4_APP_ENTRY src/main.cpp)
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(SHADPS4_APP_ENTRY
+        src/ios/ShadIOSMain.mm
+        src/ios/ShadAppDelegate.h
+        src/ios/ShadAppDelegate.mm
+        src/ios/OrbitIconRenderer.h
+        src/ios/OrbitIconRenderer.mm
+        src/ios/ShadIOSCoreBridge.h
+        src/ios/ShadIOSCoreBridge.mm
+        src/ios/ShadViewController.h
+        src/ios/ShadViewController.mm
+        src/ios/Assets.xcassets
+    )
+    set_source_files_properties(src/ios/Assets.xcassets PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources)
+endif()
+
 if(NOT ENABLE_TESTS)
 
 add_executable(shadps4
@@ -1159,12 +1182,33 @@ add_executable(shadps4
     ${SHADER_RECOMPILER}
     ${VIDEO_CORE}
     ${EMULATOR}
-    src/main.cpp
+    ${SHADPS4_APP_ENTRY}
     src/emulator.cpp
     src/emulator.h
     src/sdl_window.h
     src/sdl_window.cpp
 )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set_target_properties(shadps4 PROPERTIES
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.mathachai.shadps4"
+        MACOSX_BUNDLE_BUNDLE_NAME "Orbit Console"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1.0"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/Info.plist"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.mathachai.shadps4"
+        XCODE_ATTRIBUTE_PRODUCT_NAME "Orbit Console"
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "2"
+        XCODE_ATTRIBUTE_INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents "YES"
+        XCODE_ATTRIBUTE_INFOPLIST_KEY_CFBundleDisplayName "Orbit Console"
+        XCODE_ATTRIBUTE_INFOPLIST_KEY_CFBundleName "Orbit Console"
+        XCODE_ATTRIBUTE_INFOPLIST_KEY_UIRequiresFullScreen "YES")
+    if (SHADPS4_USE_INCREASED_MEMORY_ENTITLEMENT)
+        set_target_properties(shadps4 PROPERTIES
+            XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/src/ios/ShadPS4_iOS.entitlements")
+    endif()
+endif()
 
 create_target_directory_groups(shadps4)
 
@@ -1172,6 +1216,18 @@ target_link_libraries(shadps4 PRIVATE spdlog::spdlog)
 target_link_libraries(shadps4 PRIVATE magic_enum::magic_enum fmt::fmt toml11::toml11 tsl::robin_map xbyak::xbyak Tracy::TracyClient RenderDoc::API FFmpeg::ffmpeg Dear_ImGui ImGuiFileDialog gcn half::half ZLIB::ZLIB PNG::PNG minimp3)
 target_link_libraries(shadps4 PRIVATE Boost::headers GPUOpen::VulkanMemoryAllocator LibAtrac9 sirit Vulkan::Headers xxHash::xxhash Zydis::Zydis glslang::glslang SDL3::SDL3 pugixml::pugixml)
 target_link_libraries(shadps4 PRIVATE stb::headers lfreist-hwinfo::hwinfo nlohmann_json::nlohmann_json miniz::miniz fdk-aac CLI11::CLI11 OpenAL::OpenAL Cpp_Httplib)
+
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_link_libraries(shadps4 PRIVATE
+        "-framework UIKit"
+        "-framework Metal"
+        "-framework MetalKit"
+        "-framework AVFoundation"
+        "-framework Photos"
+        "-framework PhotosUI"
+        "-framework QuartzCore"
+        "-framework UniformTypeIdentifiers")
+endif()
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "FreeBSD")
     target_link_libraries(shadps4 PRIVATE "/usr/lib/libusb.so")
@@ -1200,7 +1256,11 @@ if (APPLE)
     # Include MoltenVK, along with an ICD file so it can be found by the system Vulkan loader if used for loading layers.
     set_property(TARGET shadps4 APPEND PROPERTY BUILD_RPATH "@executable_path")
     set(MVK_DST ${CMAKE_CURRENT_BINARY_DIR})
-    set(MVK_DYLIB_SRC ${CMAKE_CURRENT_BINARY_DIR}/externals/MoltenVK/MoltenVK/libMoltenVK.dylib)
+    if (CMAKE_GENERATOR STREQUAL "Xcode")
+        set(MVK_DYLIB_SRC ${CMAKE_CURRENT_BINARY_DIR}/externals/MoltenVK/MoltenVK/${CMAKE_CFG_INTDIR}/libMoltenVK.dylib)
+    else()
+        set(MVK_DYLIB_SRC ${CMAKE_CURRENT_BINARY_DIR}/externals/MoltenVK/MoltenVK/libMoltenVK.dylib)
+    endif()
     set(MVK_DYLIB_DST ${MVK_DST}/libMoltenVK.dylib)
     set(MVK_ICD_SRC ${CMAKE_CURRENT_SOURCE_DIR}/externals/MoltenVK/MoltenVK/icd/MoltenVK_icd.json)
     set(MVK_ICD_DST ${MVK_DST}/MoltenVK_icd.json)
@@ -1222,8 +1282,11 @@ if (APPLE)
         target_link_options(shadps4 PRIVATE -Wl,-ld_classic,-no_pie,-no_fixup_chains,-no_huge,-pagezero_size,0x4000,-segaddr,TCB_SPACE,0x4000,-segaddr,SYSTEM_MANAGED,0x400000,-segaddr,SYSTEM_RESERVED,0x7FFFFC000,-segaddr,USER_AREA,0x7000000000,-image_base,0x700000000000)
     endif()
 
-    # Replacement for std::chrono::time_zone
-    target_link_libraries(shadps4 PRIVATE date::date-tz epoll-shim)
+    # Replacement for std::chrono::time_zone. iOS uses a local epoll compatibility shim.
+    target_link_libraries(shadps4 PRIVATE date::date-tz)
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        target_link_libraries(shadps4 PRIVATE epoll-shim)
+    endif()
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "FreeBSD")
     target_link_libraries(shadps4 PRIVATE date::date-tz epoll-shim)
 endif()

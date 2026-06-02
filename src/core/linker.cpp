@@ -12,6 +12,7 @@
 #include "common/thread.h"
 #include "core/aerolib/aerolib.h"
 #include "core/aerolib/stubs.h"
+#include "core/cpu/custom_bridge/custom_cpu_translator.h"
 #include "core/devtools/widget/module_list.h"
 #include "core/emulator_settings.h"
 #include "core/libraries/kernel/kernel.h"
@@ -25,6 +26,11 @@
 
 #ifndef _WIN32
 #include <signal.h>
+#endif
+
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+extern "C" void ShadIOSSetCoreStage(int stage, const char* description);
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
 #endif
 
 namespace Core {
@@ -54,6 +60,18 @@ static PS4_SYSV_ABI void* RunMainEntry [[noreturn]] (EntryParams* params) {
                  : "r"(params->entry_addr), "r"(params), "r"(ProgramExitFunc)
                  : "rax", "rsi", "rdi");
     UNREACHABLE();
+}
+#else
+static PS4_SYSV_ABI void RunMainEntry(EntryParams* params) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSSetCoreStage(910, "redirecting x86-64 guest entry to custom ARM64 CPU bridge");
+#endif
+    CPU::CustomBridge::CustomCPUTranslator translator;
+    const bool completed =
+        translator.ExecuteEntry(params ? params->entry_addr : 0, params, ProgramExitFunc);
+    LOG_ERROR(Core_Linker, "Custom ARM64 CPU bridge returned completed={} status={}", completed,
+              translator.LastStatus());
+    ProgramExitFunc();
 }
 #endif
 
@@ -166,28 +184,54 @@ void Linker::Execute(const std::vector<std::string>& args) {
 
         // Run the game's entry function
         params.entry_addr = module->GetEntryAddress();
+#ifdef ARCH_X86_64
+        ExecuteGuest(RunMainEntry, &params);
+#else
         RunMainEntry(&params);
+#endif
     });
 }
 
 s32 Linker::LoadModule(const std::filesystem::path& elf_name, bool is_dynamic) {
     std::scoped_lock lk{mutex};
 
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string("Linker LoadModule begin: " + elf_name.string()).c_str());
+#endif
+
     if (!std::filesystem::exists(elf_name)) {
         LOG_ERROR(Core_Linker, "Provided file {} does not exist", elf_name.string());
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        ShadIOSAppendDiagnosticLog("Linker LoadModule missing file");
+#endif
         return -1;
     }
 
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog("Linker constructing Module");
+#endif
     auto module = std::make_unique<Module>(memory, elf_name, max_tls_index);
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog("Linker Module constructed");
+#endif
     if (!module->IsValid()) {
         LOG_ERROR(Core_Linker, "Provided file {} is not valid ELF file", elf_name.string());
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        ShadIOSAppendDiagnosticLog("Linker Module invalid ELF");
+#endif
         return -1;
     }
 
     num_static_modules += !is_dynamic;
     m_modules.emplace_back(std::move(module));
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog("Linker Module stored");
+#endif
 
     Core::Devtools::Widget::ModuleList::AddModule(elf_name.filename().string(), elf_name);
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog("Linker LoadModule complete");
+#endif
 
     return m_modules.size() - 1;
 }

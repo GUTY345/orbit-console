@@ -105,12 +105,16 @@ vk::SurfaceKHR CreateSurface(vk::Instance instance, const Frontend::WindowSDL& e
     }
 #elif defined(VK_USE_PLATFORM_METAL_EXT)
     if (window_info.type == Frontend::WindowSystemType::Metal) {
+        if (window_info.render_surface == nullptr) {
+            LOG_CRITICAL(Render_Vulkan, "Metal presentation surface is null");
+            UNREACHABLE();
+        }
         const vk::MetalSurfaceCreateInfoEXT macos_ci = {
             .pLayer = static_cast<const CAMetalLayer*>(window_info.render_surface),
         };
 
         if (instance.createMetalSurfaceEXT(&macos_ci, nullptr, &surface) != vk::Result::eSuccess) {
-            LOG_CRITICAL(Render_Vulkan, "Failed to initialize MacOS surface");
+            LOG_CRITICAL(Render_Vulkan, "Failed to initialize Metal presentation surface");
             UNREACHABLE();
         }
     }

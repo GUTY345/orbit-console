@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <map>
+#include <cstdlib>
+#include <string>
+#include <string_view>
 #include "common/alignment.h"
 #include "common/arch.h"
 #include "common/assert.h"
 #include "common/elf_info.h"
 #include "common/error.h"
+#include "common/ios_low_memory.h"
 #include "core/address_space.h"
 #include "core/emulator_settings.h"
 #include "core/libraries/kernel/memory.h"
@@ -18,6 +22,11 @@
 #else
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <unistd.h>
+#endif
+
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
 #endif
 
 #if defined(__APPLE__) && defined(ARCH_X86_64)
@@ -30,6 +39,15 @@ asm(".zerofill USER_AREA,USER_AREA,__USER_AREA,0x5F9000000000");
 namespace Core {
 
 // Constants used for mapping address space.
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+// Compact guest VA layout for iPadOS/free-account testing. The desktop layout reserves tens of
+// GiB before the emulator can even reach the linker, which trips iPadOS VM limits immediately.
+constexpr VAddr SYSTEM_MANAGED_MIN = 0x400000ULL;
+constexpr VAddr SYSTEM_MANAGED_MAX = 0x0FFFFFFFULL; // ~252 MiB after the low guard gap.
+constexpr VAddr SYSTEM_RESERVED_MIN = 0x10000000ULL;
+constexpr VAddr SYSTEM_RESERVED_MAX = 0x1FFFFFFFULL; // 256 MiB.
+constexpr VAddr USER_MIN = 0x20000000ULL;
+#else
 constexpr VAddr SYSTEM_MANAGED_MIN = 0x400000ULL;
 constexpr VAddr SYSTEM_MANAGED_MAX = 0x7FFFFBFFFULL;
 constexpr VAddr SYSTEM_RESERVED_MIN = 0x7FFFFC000ULL;
@@ -42,12 +60,15 @@ constexpr VAddr USER_MIN = 0x7000000000ULL;
 constexpr VAddr SYSTEM_RESERVED_MAX = 0xFFFFFFFFFULL;
 constexpr VAddr USER_MIN = 0x1000000000ULL;
 #endif
+#endif
 #if defined(__linux__)
 // Linux maps the shadPS4 executable around here, so limit the user maximum
 constexpr VAddr USER_MAX = 0x54FFFFFFFFFFULL;
 #elif defined(__FreeBSD__)
 // FreeBSD address space is extremely volatile, keep this lower for safety.
 constexpr VAddr USER_MAX = 0xFFFFFFFFFFFULL;
+#elif defined(__APPLE__) && defined(ARCH_ARM64)
+constexpr VAddr USER_MAX = 0xEFFFFFFFULL; // 3 GiB compact user span.
 #else
 constexpr VAddr USER_MAX = 0x5FFFFFFFFFFFULL;
 #endif
@@ -59,6 +80,16 @@ static constexpr u64 UserSize = USER_MAX - USER_MIN + 1;
 
 // Required backing file size for mapping physical address space.
 static u64 BackingSize = ORBIS_KERNEL_TOTAL_MEM_DEV_PRO + ORBIS_KERNEL_FLEXIBLE_MEMORY_SIZE;
+
+namespace {
+
+void LogIOSAddressSpace(std::string_view message) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string(message).c_str());
+#endif
+}
+
+} // namespace
 
 #ifdef _WIN32
 
@@ -630,12 +661,22 @@ enum PosixPageProtection {
 struct AddressSpace::Impl {
     Impl() {
         BackingSize += EmulatorSettings.GetExtraDmemInMBytes() * 1_MB;
+        BackingSize = Common::IOSLowMemory::ClampBackingSize(BackingSize);
+        LogIOSAddressSpace(fmt::format(
+            "AddressSpace init: system_managed={} MiB system_reserved={} MiB user={} MiB backing={} MiB",
+            SystemManagedSize / 1_MB, SystemReservedSize / 1_MB, UserSize / 1_MB,
+            BackingSize / 1_MB));
         // Allocate virtual address placeholder for our address space.
         system_managed_size = SystemManagedSize;
         system_reserved_size = SystemReservedSize;
         user_size = UserSize;
 
-        constexpr int protection_flags = PROT_READ | PROT_WRITE;
+        constexpr int protection_flags =
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+            PROT_NONE;
+#else
+            PROT_READ | PROT_WRITE;
+#endif
         int map_flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED; // compiler knows its constexpr
 #if !defined(__FreeBSD__)
         map_flags |= MAP_NORESERVE;
@@ -677,6 +718,8 @@ struct AddressSpace::Impl {
         if (system_managed_base == MAP_FAILED || system_reserved_base == MAP_FAILED ||
             user_base == MAP_FAILED) {
             LOG_CRITICAL(Kernel_Vmm, "mmap failed: {}", strerror(errno));
+            LogIOSAddressSpace(fmt::format("AddressSpace virtual mmap failed: errno={} {}",
+                                           errno, strerror(errno)));
             throw std::bad_alloc{};
         }
 
@@ -690,20 +733,38 @@ struct AddressSpace::Impl {
                  fmt::ptr(user_base + user_size - 1));
 
         const VAddr system_managed_addr = reinterpret_cast<VAddr>(system_managed_base);
-        const VAddr system_reserved_addr = reinterpret_cast<VAddr>(system_managed_base);
+        const VAddr system_reserved_addr = reinterpret_cast<VAddr>(system_reserved_base);
         const VAddr user_addr = reinterpret_cast<VAddr>(user_base);
         m_free_regions.insert({system_managed_addr, system_managed_addr + system_managed_size});
         m_free_regions.insert({system_reserved_addr, system_reserved_addr + system_reserved_size});
         m_free_regions.insert({user_addr, user_addr + user_size});
 
 #ifdef __APPLE__
+#if defined(ARCH_ARM64)
+        const char* tmp_dir = std::getenv("TMPDIR");
+        const std::string backing_path =
+            fmt::format("{}BackingDmem{}", tmp_dir != nullptr ? tmp_dir : "/tmp/", getpid());
+        backing_fd = open(backing_path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
+        if (backing_fd < 0) {
+            LOG_CRITICAL(Kernel_Vmm, "open backing file failed: {}", strerror(errno));
+            LogIOSAddressSpace(fmt::format("AddressSpace sandbox backing open failed: errno={} {}",
+                                           errno, strerror(errno)));
+            throw std::bad_alloc{};
+        }
+        unlink(backing_path.c_str());
+        LogIOSAddressSpace(fmt::format("AddressSpace using sandbox backing file: {}",
+                                       backing_path));
+#else
         const auto shm_path = fmt::format("/BackingDmem{}", getpid());
         backing_fd = shm_open(shm_path.c_str(), O_RDWR | O_CREAT | O_EXCL, 0600);
         if (backing_fd < 0) {
             LOG_CRITICAL(Kernel_Vmm, "shm_open failed: {}", strerror(errno));
+            LogIOSAddressSpace(fmt::format("AddressSpace shm_open failed: errno={} {}", errno,
+                                           strerror(errno)));
             throw std::bad_alloc{};
         }
         shm_unlink(shm_path.c_str());
+#endif
 #else
 #ifndef __FreeBSD__
         madvise(virtual_base, virtual_size, MADV_HUGEPAGE);
@@ -724,6 +785,8 @@ struct AddressSpace::Impl {
         if (ret != 0) {
             LOG_CRITICAL(Kernel_Vmm, "ftruncate failed with {}, are you out-of-memory?",
                          strerror(errno));
+            LogIOSAddressSpace(fmt::format("AddressSpace ftruncate failed backing={} MiB errno={} {}",
+                                           BackingSize / 1_MB, errno, strerror(errno)));
             throw std::bad_alloc{};
         }
 
@@ -732,8 +795,11 @@ struct AddressSpace::Impl {
             mmap(nullptr, BackingSize, PROT_READ | PROT_WRITE, MAP_SHARED, backing_fd, 0));
         if (backing_base == MAP_FAILED) {
             LOG_CRITICAL(Kernel_Vmm, "mmap failed: {}", strerror(errno));
+            LogIOSAddressSpace(fmt::format("AddressSpace backing mmap failed backing={} MiB errno={} {}",
+                                           BackingSize / 1_MB, errno, strerror(errno)));
             throw std::bad_alloc{};
         }
+        LogIOSAddressSpace("AddressSpace init completed");
     }
 
     void* Map(VAddr virtual_addr, PAddr phys_addr, u64 size, PosixPageProtection prot,
@@ -750,7 +816,12 @@ struct AddressSpace::Impl {
         const int flag = phys_addr != -1 ? MAP_SHARED : (MAP_ANONYMOUS | MAP_PRIVATE);
         void* ret = mmap(reinterpret_cast<void*>(virtual_addr), size, prot, MAP_FIXED | flag,
                          handle, host_offset);
-        ASSERT_MSG(ret != MAP_FAILED, "mmap failed: {}", strerror(errno));
+        if (ret == MAP_FAILED) {
+            LogIOSAddressSpace(fmt::format(
+                "AddressSpace Map failed addr=0x{:x} size={} phys=0x{:x} prot={} errno={} {}",
+                virtual_addr, size, phys_addr, static_cast<int>(prot), errno, strerror(errno)));
+            throw std::bad_alloc{};
+        }
         return ret;
     }
 

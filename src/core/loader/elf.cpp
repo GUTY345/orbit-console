@@ -2,9 +2,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <fmt/core.h>
+#include "common/arch.h"
 #include "common/assert.h"
 #include "common/logging/log.h"
 #include "core/loader/elf.h"
+
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
+#endif
 
 namespace Core::Loader {
 
@@ -466,13 +471,51 @@ std::string Elf::ElfPHeaderStr(u16 no) {
 }
 
 void Elf::LoadSegment(u64 virtual_addr, u64 file_offset, u64 size) {
+    const auto read_segment = [this](u64 dst, u64 src_offset, u64 bytes) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        static constexpr u64 ChunkSize = 256_KB;
+        ShadIOSAppendDiagnosticLog(
+            fmt::format("ELF LoadSegment begin dst=0x{:x} file_off=0x{:x} size={}", dst,
+                        src_offset, bytes)
+                .c_str());
+        u64 copied = 0;
+        while (copied < bytes) {
+            const u64 chunk = std::min<u64>(ChunkSize, bytes - copied);
+            const size_t read =
+                m_f.ReadRaw<u8>(reinterpret_cast<u8*>(dst + copied), static_cast<size_t>(chunk));
+            if (read != chunk) {
+                ShadIOSAppendDiagnosticLog(
+                    fmt::format("ELF LoadSegment short read dst=0x{:x} copied={} want={} got={}",
+                                dst, copied, chunk, read)
+                        .c_str());
+                return;
+            }
+            copied += chunk;
+            if ((copied & (1_MB - 1)) == 0 || copied == bytes) {
+                ShadIOSAppendDiagnosticLog(
+                    fmt::format("ELF LoadSegment progress dst=0x{:x} copied={}/{}", dst, copied,
+                                bytes)
+                        .c_str());
+            }
+        }
+        ShadIOSAppendDiagnosticLog(
+            fmt::format("ELF LoadSegment complete dst=0x{:x} size={}", dst, bytes).c_str());
+#else
+        m_f.ReadRaw<u8>(reinterpret_cast<u8*>(dst), bytes);
+#endif
+    };
+
     if (!is_self) {
         // It's elf file
         if (!m_f.Seek(file_offset, SeekOrigin::SetOrigin)) {
             LOG_CRITICAL(Loader, "Failed to seek to ELF header");
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+            ShadIOSAppendDiagnosticLog(
+                fmt::format("ELF LoadSegment seek failed file_off=0x{:x}", file_offset).c_str());
+#endif
             return;
         }
-        m_f.ReadRaw<u8>(reinterpret_cast<u8*>(virtual_addr), size);
+        read_segment(virtual_addr, file_offset, size);
         return;
     }
 
@@ -487,13 +530,24 @@ void Elf::LoadSegment(u64 virtual_addr, u64 file_offset, u64 size) {
                 auto offset = file_offset - phdr.p_offset;
                 if (!m_f.Seek(offset + seg.file_offset, SeekOrigin::SetOrigin)) {
                     LOG_CRITICAL(Loader, "Failed to seek to segment");
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+                    ShadIOSAppendDiagnosticLog(
+                        fmt::format("SELF LoadSegment seek failed file_off=0x{:x} seg_off=0x{:x}",
+                                    file_offset, seg.file_offset)
+                            .c_str());
+#endif
                     return;
                 }
-                m_f.ReadRaw<u8>(reinterpret_cast<u8*>(virtual_addr), size);
+                read_segment(virtual_addr, offset + seg.file_offset, size);
                 return;
             }
         }
     }
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(
+        fmt::format("SELF LoadSegment missing block file_off=0x{:x} size={}", file_offset, size)
+            .c_str());
+#endif
     UNREACHABLE();
 }
 

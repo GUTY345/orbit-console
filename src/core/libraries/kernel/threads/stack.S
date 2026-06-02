@@ -3,6 +3,18 @@
 
 .global _runOnAnotherStack
 _runOnAnotherStack:
+#if defined(__aarch64__) || defined(_M_ARM64)
+  stp x19, x20, [sp, #-16]!
+  mov x19, sp
+  mov x20, x29
+  mov sp, x2
+  mov x29, x2
+  blr x1
+  mov x29, x20
+  mov sp, x19
+  ldp x19, x20, [sp], #16
+  ret
+#else
   pushq %r12
   pushq %r13
 #ifdef _WIN32
@@ -35,3 +47,4 @@ _runOnAnotherStack:
   popq %r13
   popq %r12
   ret
+#endif

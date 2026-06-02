@@ -11,7 +11,9 @@
 #include <csignal>
 #include <pthread.h>
 #include <unistd.h>
+#if defined(__x86_64__) || defined(_M_X64)
 #include <xmmintrin.h>
+#endif
 #endif
 
 namespace Core {
@@ -63,8 +65,10 @@ void NativeThread::Exit() {
 
 void NativeThread::Initialize() {
     // Set MXCSR and FPUCW registers to the values used by Orbis.
+#if defined(__x86_64__) || defined(_M_X64)
     _mm_setcsr(ORBIS_MXCSR);
     asm volatile("fldcw %0" : : "m"(ORBIS_FPUCW));
+#endif
 #if _WIN64
     tid = GetCurrentThreadId();
 #else

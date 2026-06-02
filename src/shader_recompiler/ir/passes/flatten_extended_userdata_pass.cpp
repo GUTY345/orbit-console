@@ -22,18 +22,25 @@
 #include "src/common/arch.h"
 #include "src/common/decoder.h"
 
+#ifdef ARCH_X86_64
 using namespace Xbyak::util;
 
 static Xbyak::CodeGenerator g_srt_codegen(32_MB);
 static const u8* g_srt_codegen_start = nullptr;
+#endif
 
 namespace Shader {
 
 PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
+#ifdef ARCH_X86_64
     const auto func_addr = (PFN_SrtWalker)g_srt_codegen.getCurr();
     g_srt_codegen.db(ptr, size);
     g_srt_codegen.ready();
     return func_addr;
+#else
+    LOG_WARNING(Render_Recompiler, "SRT walker registration is disabled on this host architecture");
+    return nullptr;
+#endif
 }
 
 } // namespace Shader
@@ -68,6 +75,7 @@ static void DumpSrtProgram(const Shader::Info& info, const u8* code, size_t code
 }
 
 static bool SrtWalkerSignalHandler(void* context, void* fault_address) {
+#ifdef ARCH_X86_64
     // Only handle if the fault address is within the SRT code range
     const u8* code_start = g_srt_codegen_start;
     const u8* code_end = code_start + g_srt_codegen.getSize();
@@ -116,6 +124,9 @@ static bool SrtWalkerSignalHandler(void* context, void* fault_address) {
     LOG_DEBUG(Render_Recompiler, "Patched SRT walker at {}", code);
 
     return true;
+#else
+    return false;
+#endif
 }
 
 using namespace Shader;
@@ -158,6 +169,7 @@ namespace Shader::Optimization {
 
 namespace {
 
+#ifdef ARCH_X86_64
 static inline void PushPtr(Xbyak::CodeGenerator& c, u32 off_dw) {
     c.push(rdi);
     c.mov(rdi, ptr[rdi + (off_dw << 2)]);
@@ -235,6 +247,13 @@ static void GenerateSrtProgram(Info& info, PassInfo& pass_info) {
 
     info.srt_info.flattened_bufsize_dw = pass_info.dst_off_dw;
 }
+#else
+static void GenerateSrtProgram(Info& info, PassInfo&) {
+    info.srt_info.walker_func = nullptr;
+    info.srt_info.walker_func_size = 0;
+    LOG_WARNING(Render_Recompiler, "SRT walker codegen is disabled on this host architecture");
+}
+#endif
 
 }; // namespace
 

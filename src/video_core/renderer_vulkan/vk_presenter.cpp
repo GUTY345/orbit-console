@@ -18,6 +18,8 @@
 #include "video_core/renderdoc.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
 #include "video_core/renderer_vulkan/vk_presenter.h"
+
+#include <atomic>
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 #include "video_core/texture_cache/image.h"
 
@@ -43,6 +45,22 @@
 #include <vk_mem_alloc.h>
 
 namespace Vulkan {
+
+static std::atomic<u64> g_ios_presenter_game_frames{0};
+static std::atomic<u64> g_ios_presenter_blank_frames{0};
+static std::atomic<u64> g_ios_presenter_present_calls{0};
+
+extern "C" u64 ShadIOSGetPresenterGameFrameCount(void) {
+    return g_ios_presenter_game_frames.load(std::memory_order_relaxed);
+}
+
+extern "C" u64 ShadIOSGetPresenterBlankFrameCount(void) {
+    return g_ios_presenter_blank_frames.load(std::memory_order_relaxed);
+}
+
+extern "C" u64 ShadIOSGetPresenterPresentCount(void) {
+    return g_ios_presenter_present_calls.load(std::memory_order_relaxed);
+}
 
 bool CanBlitToSwapchain(const vk::PhysicalDevice physical_device, vk::Format format) {
     const vk::FormatProperties props{physical_device.getFormatProperties(format)};
@@ -686,6 +704,13 @@ static vk::Format GetFrameViewFormat(const Libraries::VideoOut::PixelFormat form
 
 Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& attribute,
                                VAddr cpu_address) {
+    const u64 game_frame_count =
+        g_ios_presenter_game_frames.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (game_frame_count <= 3 || (game_frame_count % 120) == 0) {
+        LOG_INFO(Render_Vulkan, "Presenter preparing game frame {} cpu={:#x}", game_frame_count,
+                 cpu_address);
+    }
+
     auto desc = VideoCore::TextureCache::ImageDesc{attribute, cpu_address};
     const auto image_id = texture_cache.FindImage(desc);
     texture_cache.UpdateImage(image_id);
@@ -775,6 +800,12 @@ Frame* Presenter::PrepareFrame(const Libraries::VideoOut::BufferAttributeGroup& 
 }
 
 Frame* Presenter::PrepareBlankFrame(bool present_thread) {
+    const u64 blank_frame_count =
+        g_ios_presenter_blank_frames.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (blank_frame_count <= 3 || (blank_frame_count % 120) == 0) {
+        LOG_INFO(Render_Vulkan, "Presenter preparing blank frame {}", blank_frame_count);
+    }
+
     // Request a free presentation frame.
     Frame* frame = GetRenderFrame();
 
@@ -848,6 +879,13 @@ Frame* Presenter::PrepareBlankFrame(bool present_thread) {
 }
 
 void Presenter::Present(Frame* frame, bool is_reusing_frame) {
+    const u64 present_count = g_ios_presenter_present_calls.fetch_add(1, std::memory_order_relaxed) + 1;
+    if (present_count <= 3 || (present_count % 120) == 0) {
+        LOG_INFO(Render_Vulkan, "Presenter present call {} frame={}x{} reused={}", present_count,
+                 frame != nullptr ? frame->width : 0, frame != nullptr ? frame->height : 0,
+                 is_reusing_frame);
+    }
+
     // Free the frame for reuse
     const auto free_frame = [&] {
         if (!is_reusing_frame) {

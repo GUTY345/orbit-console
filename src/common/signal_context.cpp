@@ -21,7 +21,7 @@ void* GetXmmPointer(void* ctx, u8 index) {
 #define CASE(index)                                                                                \
     case index:                                                                                    \
         return (void*)(&((EXCEPTION_POINTERS*)ctx)->ContextRecord->Xmm##index.Low)
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && defined(ARCH_X86_64)
 #define CASE(index)                                                                                \
     case index:                                                                                    \
         return (void*)(&((ucontext_t*)ctx)->uc_mcontext->__fs.__fpu_xmm##index);
@@ -35,11 +35,14 @@ void* GetXmmPointer(void* ctx, u8 index) {
         auto* s_fpu = (struct savefpu*)(&mctx.mc_fpstate[0]);                                      \
         return (void*)(&(s_fpu->sv_xmm[0]));                                                       \
     }
-#else
+#elif defined(ARCH_X86_64)
 #define CASE(index)                                                                                \
     case index:                                                                                    \
         return (void*)(&((ucontext_t*)ctx)->uc_mcontext.fpregs->_xmm[index].element[0])
+#else
+    return nullptr;
 #endif
+#if defined(_WIN32) || defined(ARCH_X86_64)
     switch (index) {
         CASE(0);
         CASE(1);
@@ -63,13 +66,16 @@ void* GetXmmPointer(void* ctx, u8 index) {
     }
     }
 #undef CASE
+#endif
 }
 
 void* GetRip(void* ctx) {
 #if defined(_WIN32)
     return (void*)((EXCEPTION_POINTERS*)ctx)->ContextRecord->Rip;
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && defined(ARCH_X86_64)
     return (void*)((ucontext_t*)ctx)->uc_mcontext->__ss.__rip;
+#elif defined(__APPLE__) && defined(ARCH_ARM64)
+    return (void*)((ucontext_t*)ctx)->uc_mcontext->__ss.__pc;
 #elif defined(__FreeBSD__)
     return (void*)((ucontext_t*)ctx)->uc_mcontext.mc_rip;
 #else
@@ -80,8 +86,10 @@ void* GetRip(void* ctx) {
 void IncrementRip(void* ctx, u64 length) {
 #if defined(_WIN32)
     ((EXCEPTION_POINTERS*)ctx)->ContextRecord->Rip += length;
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) && defined(ARCH_X86_64)
     ((ucontext_t*)ctx)->uc_mcontext->__ss.__rip += length;
+#elif defined(__APPLE__) && defined(ARCH_ARM64)
+    ((ucontext_t*)ctx)->uc_mcontext->__ss.__pc += length;
 #elif defined(__FreeBSD__)
     ((ucontext_t*)ctx)->uc_mcontext.mc_rip += length;
 #else

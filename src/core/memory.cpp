@@ -13,7 +13,21 @@
 #include "core/memory.h"
 #include "video_core/renderer_vulkan/vk_rasterizer.h"
 
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
+#endif
+
 namespace Core {
+
+namespace {
+
+void LogIOSMemory(std::string_view message) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string(message).c_str());
+#endif
+}
+
+} // namespace
 
 MemoryManager::MemoryManager() {
     LOG_INFO(Kernel_Vmm, "Virtual memory space initialized with regions:");
@@ -119,7 +133,7 @@ u64 MemoryManager::ClampRangeSize(VAddr virtual_addr, u64 size) {
 
 void MemoryManager::SetPrtArea(u32 id, VAddr address, u64 size) {
     PrtArea& area = prt_areas[id];
-    if (area.mapped) {
+    if (area.mapped && rasterizer != nullptr) {
         rasterizer->UnmapMemory(area.start, area.end - area.start);
     }
 
@@ -129,7 +143,9 @@ void MemoryManager::SetPrtArea(u32 id, VAddr address, u64 size) {
 
     // Pretend the entire PRT area is mapped to avoid GPU tracking errors.
     // The caches will use CopySparseMemory to fetch data which avoids unmapped areas.
-    rasterizer->MapMemory(address, size);
+    if (rasterizer != nullptr) {
+        rasterizer->MapMemory(address, size);
+    }
 }
 
 void MemoryManager::CopySparseMemory(VAddr virtual_addr, u8* dest, u64 size) {
@@ -335,7 +351,7 @@ s32 MemoryManager::Free(PAddr phys_addr, u64 size, bool is_checked) {
 
     // Early unmap from GPU to avoid deadlocking.
     for (auto& [addr, unmap_size] : remove_list) {
-        if (IsValidGpuMapping(addr, unmap_size)) {
+        if (rasterizer != nullptr && IsValidGpuMapping(addr, unmap_size)) {
             rasterizer->UnmapMemory(addr, unmap_size);
         }
     }
@@ -451,7 +467,7 @@ s32 MemoryManager::PoolCommit(VAddr virtual_addr, u64 size, MemoryProt prot, s32
     MergeAdjacent(vma_map, new_vma_handle);
 
     lk2.unlock();
-    if (IsValidGpuMapping(mapped_addr, size)) {
+    if (rasterizer != nullptr && IsValidGpuMapping(mapped_addr, size)) {
         rasterizer->MapMemory(mapped_addr, size);
     }
 
@@ -502,6 +518,9 @@ MemoryManager::VMAHandle MemoryManager::CreateArea(VAddr virtual_addr, u64 size,
 s32 MemoryManager::MapMemory(void** out_addr, VAddr virtual_addr, u64 size, MemoryProt prot,
                              MemoryMapFlags flags, VMAType type, std::string_view name,
                              bool validate_dmem, PAddr phys_addr, u64 alignment) {
+    LogIOSMemory(fmt::format("MapMemory begin name={} in=0x{:x} size={} type={} flags=0x{:x}",
+                             name, virtual_addr, size, static_cast<u32>(type),
+                             static_cast<u32>(flags)));
     // Certain games perform flexible mappings on loop to determine
     // the available flexible memory size. Questionable but we need to handle this.
     if (type == VMAType::Flexible && flexible_usage + size > total_flexible_size) {
@@ -561,13 +580,18 @@ s32 MemoryManager::MapMemory(void** out_addr, VAddr virtual_addr, u64 size, Memo
         virtual_addr = SearchFree(virtual_addr, size, alignment);
         if (virtual_addr == -1) {
             // No suitable memory areas to map to
+            LogIOSMemory(fmt::format("MapMemory search failed name={} size={}", name, size));
             return ORBIS_KERNEL_ERROR_ENOMEM;
         }
+        LogIOSMemory(fmt::format("MapMemory search result name={} out=0x{:x}", name, virtual_addr));
     }
 
     // Perform early GPU unmap to avoid potential deadlocks
-    if (IsValidGpuMapping(virtual_addr, size)) {
+    if (rasterizer != nullptr && IsValidGpuMapping(virtual_addr, size)) {
         rasterizer->UnmapMemory(virtual_addr, size);
+    } else if (rasterizer == nullptr) {
+        LogIOSMemory(fmt::format("MapMemory skipping rasterizer unmap name={} addr=0x{:x}", name,
+                                 virtual_addr));
     }
 
     // Acquire writer lock.
@@ -577,6 +601,7 @@ s32 MemoryManager::MapMemory(void** out_addr, VAddr virtual_addr, u64 size, Memo
     auto new_vma_handle = CreateArea(virtual_addr, size, prot, flags, type, name, alignment);
     auto& new_vma = new_vma_handle->second;
     auto mapped_addr = new_vma.base;
+    LogIOSMemory(fmt::format("MapMemory area created name={} mapped=0x{:x}", name, mapped_addr));
     bool is_exec = True(prot & MemoryProt::CpuExec);
 
     // If type is Flexible, we need to track how much flexible memory is used here.
@@ -670,11 +695,15 @@ s32 MemoryManager::MapMemory(void** out_addr, VAddr virtual_addr, u64 size, Memo
         lk2.unlock();
 
         // If this is not a reservation, then map to GPU and address space
-        if (IsValidGpuMapping(mapped_addr, size)) {
+        if (rasterizer != nullptr && IsValidGpuMapping(mapped_addr, size)) {
             rasterizer->MapMemory(mapped_addr, size);
+        } else if (rasterizer == nullptr) {
+            LogIOSMemory(fmt::format("MapMemory skipping rasterizer map name={} addr=0x{:x}", name,
+                                     mapped_addr));
         }
     }
 
+    LogIOSMemory(fmt::format("MapMemory complete name={} mapped=0x{:x}", name, mapped_addr));
     return ORBIS_OK;
 }
 
@@ -740,8 +769,11 @@ s32 MemoryManager::MapFile(void** out_addr, VAddr virtual_addr, u64 size, Memory
     }
 
     // Perform early GPU unmap to avoid potential deadlocks
-    if (IsValidGpuMapping(virtual_addr, size)) {
+    if (rasterizer != nullptr && IsValidGpuMapping(virtual_addr, size)) {
         rasterizer->UnmapMemory(virtual_addr, size);
+    } else if (rasterizer == nullptr) {
+        LogIOSMemory(fmt::format("MapFile skipping rasterizer unmap addr=0x{:x} size={}",
+                                 virtual_addr, size));
     }
 
     // Aquire writer lock
@@ -777,8 +809,11 @@ s32 MemoryManager::PoolDecommit(VAddr virtual_addr, u64 size) {
     }
 
     // Perform early GPU unmap to avoid potential deadlocks
-    if (IsValidGpuMapping(virtual_addr, size)) {
+    if (rasterizer != nullptr && IsValidGpuMapping(virtual_addr, size)) {
         rasterizer->UnmapMemory(virtual_addr, size);
+    } else if (rasterizer == nullptr) {
+        LogIOSMemory(fmt::format("PoolDecommit skipping rasterizer unmap addr=0x{:x} size={}",
+                                 virtual_addr, size));
     }
 
     // Aquire writer mutex
@@ -857,8 +892,11 @@ s32 MemoryManager::UnmapMemory(VAddr virtual_addr, u64 size) {
                virtual_addr);
 
     // If the requested range has GPU access, unmap from GPU.
-    if (IsValidGpuMapping(virtual_addr, size)) {
+    if (rasterizer != nullptr && IsValidGpuMapping(virtual_addr, size)) {
         rasterizer->UnmapMemory(virtual_addr, size);
+    } else if (rasterizer == nullptr) {
+        LogIOSMemory(fmt::format("UnmapMemory skipping rasterizer unmap addr=0x{:x} size={}",
+                                 virtual_addr, size));
     }
 
     // Acquire writer lock.

@@ -35,6 +35,13 @@ bld/
 [Ll]og/
 [Ll]ogs/
 [Bb]uild/
+build_ios/
+DerivedData/
+*.xcuserdata/
+
+# Local Codex/workspace scratch files
+.codex_backups/
+.zhanlu/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/

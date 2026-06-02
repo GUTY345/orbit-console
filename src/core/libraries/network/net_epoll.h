@@ -14,9 +14,49 @@
 #include <wepoll.h>
 #endif
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+constexpr int EPOLL_CTL_ADD = 1;
+constexpr int EPOLL_CTL_MOD = 2;
+constexpr int EPOLL_CTL_DEL = 3;
+constexpr u32 EPOLLIN = 0x001;
+constexpr u32 EPOLLOUT = 0x004;
+constexpr u32 EPOLLERR = 0x008;
+constexpr u32 EPOLLHUP = 0x010;
+
+union epoll_data_t {
+    void* ptr;
+    int fd;
+    u32 u32;
+    u64 u64;
+};
+
+struct epoll_event {
+    u32 events;
+    epoll_data_t data;
+};
+
+inline int epoll_create1(int) {
+    return -2;
+}
+
+inline int epoll_ctl(int, int, int, epoll_event*) {
+    return 0;
+}
+
+inline int epoll_wait(int, epoll_event*, int, int) {
+    return 0;
+}
+#endif
+
 #if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
 // ADD libepoll-shim if using freebsd!
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
 #include <sys/epoll.h>
+#endif
 #include <unistd.h>
 #endif
 
@@ -54,6 +94,8 @@ struct Epoll {
 #ifdef _WIN32
         epoll_close(epoll_fd);
         epoll_fd = nullptr;
+#elif defined(__APPLE__) && TARGET_OS_IPHONE
+        epoll_fd = -1;
 #else
         close(epoll_fd);
         epoll_fd = -1;

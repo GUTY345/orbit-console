@@ -16,11 +16,29 @@
 #include "core/module.h"
 #include "core/tls.h"
 
+#include <stdexcept>
+
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+extern "C" void ShadIOSAppendDiagnosticLog(const char* message);
+#endif
+
 namespace Core {
 
 using EntryFunc = PS4_SYSV_ABI int (*)(size_t args, const void* argp, void* param);
 
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+static u64 GetModuleLoadBase(Core::MemoryManager* memory) {
+    // iPadOS maps the compact guest address window wherever the kernel gives us
+    // room. Start module search from the actual user VA base, not a fixed PS4
+    // address, so SearchFree can find the reserved mmap placeholder.
+    return Common::AlignUp(memory->UserVirtualBase(), 16_KB);
+}
+#else
 static constexpr u64 ModuleLoadBase = 0x800000000;
+static constexpr u64 GetModuleLoadBase(Core::MemoryManager*) {
+    return ModuleLoadBase;
+}
+#endif
 
 static u64 GetAlignedSize(const elf_program_header& phdr) {
     return (phdr.p_align != 0 ? (phdr.p_memsz + (phdr.p_align - 1)) & ~(phdr.p_align - 1)
@@ -85,12 +103,33 @@ static std::string StringToNid(std::string_view symbol) {
 
 Module::Module(Core::MemoryManager* memory_, const std::filesystem::path& file_, u32& max_tls_index)
     : memory{memory_}, file{file_}, name{file.filename().string()} {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string("Module ctor begin: " + name).c_str());
+#endif
     elf.Open(file);
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string("Module ELF opened: " + name).c_str());
+#endif
     if (elf.IsElfFile()) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        ShadIOSAppendDiagnosticLog(std::string("Module ELF valid: " + name).c_str());
+#endif
         LoadModuleToMemory(max_tls_index);
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        ShadIOSAppendDiagnosticLog(std::string("Module memory loaded: " + name).c_str());
+#endif
         LoadDynamicInfo();
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        ShadIOSAppendDiagnosticLog(std::string("Module dynamic info loaded: " + name).c_str());
+#endif
         LoadSymbols();
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        ShadIOSAppendDiagnosticLog(std::string("Module symbols loaded: " + name).c_str());
+#endif
     }
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string("Module ctor complete: " + name).c_str());
+#endif
 }
 
 Module::~Module() = default;
@@ -102,6 +141,9 @@ s32 Module::Start(u64 args, const void* argp, void* param) {
 }
 
 void Module::LoadModuleToMemory(u32& max_tls_index) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string("Module LoadModuleToMemory begin: " + name).c_str());
+#endif
     static constexpr size_t BlockAlign = 0x1000;
     static constexpr u64 TrampolineSize = 8_MB;
 
@@ -110,13 +152,36 @@ void Module::LoadModuleToMemory(u32& max_tls_index) {
     const auto elf_pheader = elf.GetProgramHeader();
     const u64 base_size = CalculateBaseSize(elf_header, elf_pheader);
     aligned_base_size = Common::AlignUp(base_size, BlockAlign);
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(
+        std::string("Module base size calculated: " + name + " size=" + std::to_string(base_size) +
+                    " aligned=" + std::to_string(aligned_base_size))
+            .c_str());
+#endif
 
     // Reserve memory area for module
     void** out_addr = reinterpret_cast<void**>(&base_virtual_addr);
+    const u64 module_load_base = GetModuleLoadBase(memory);
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(
+        std::string("Module reserving memory: " + name + " base=0x" +
+                    fmt::format("{:x}", module_load_base))
+            .c_str());
+#endif
     s32 result =
-        memory->MapMemory(out_addr, ModuleLoadBase, aligned_base_size + TrampolineSize,
+        memory->MapMemory(out_addr, module_load_base, aligned_base_size + TrampolineSize,
                           MemoryProt::NoAccess, MemoryMapFlags::NoFlags, VMAType::Reserved, name);
-    ASSERT_MSG(result == ORBIS_OK, "Failed to reserve memory for module {}", name);
+    if (result != ORBIS_OK) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+        ShadIOSAppendDiagnosticLog(
+            std::string("Module reserve failed: " + name + " result=" + std::to_string(result))
+                .c_str());
+#endif
+        throw std::runtime_error(fmt::format("Failed to reserve memory for module {}", name));
+    }
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+    ShadIOSAppendDiagnosticLog(std::string("Module memory reserved: " + name).c_str());
+#endif
     LOG_INFO(Core_Linker, "Loading module {} to {}", name, fmt::ptr(*out_addr));
 
 #ifdef ARCH_X86_64
@@ -140,6 +205,13 @@ void Module::LoadModuleToMemory(u32& max_tls_index) {
         void* segment_addr = std::bit_cast<void*>(segment_vaddr);
         const u64 segment_size = GetAlignedSize(phdr);
         if (do_map) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+            ShadIOSAppendDiagnosticLog(
+                std::string("Module mapping segment: " + name + " vaddr=" +
+                            std::to_string(segment_vaddr) + " size=" +
+                            std::to_string(segment_size))
+                    .c_str());
+#endif
             // Convert ELF flags to memory prot.
             auto segment_prot = MemoryProt::NoAccess;
             if ((phdr.p_flags & PF_READ) != 0) {
@@ -156,9 +228,30 @@ void Module::LoadModuleToMemory(u32& max_tls_index) {
             const auto memory_type = IsSystemLib() ? VMAType::Code : VMAType::Flexible;
             s32 result = memory->MapMemory(&segment_addr, segment_vaddr, segment_size, segment_prot,
                                            MemoryMapFlags::Fixed, memory_type, name);
-            ASSERT_MSG(result == ORBIS_OK, "Failed to map segment at {:#x} for module {}",
-                       segment_vaddr, name);
+            if (result != ORBIS_OK) {
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+                ShadIOSAppendDiagnosticLog(
+                    std::string("Module segment map failed: " + name + " vaddr=0x" +
+                                fmt::format("{:x}", segment_vaddr) + " result=" +
+                                std::to_string(result))
+                        .c_str());
+#endif
+                throw std::runtime_error(
+                    fmt::format("Failed to map segment at {:#x} for module {}", segment_vaddr,
+                                name));
+            }
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+            ShadIOSAppendDiagnosticLog(
+                std::string("Module loading segment bytes: " + name + " vaddr=0x" +
+                            fmt::format("{:x}", segment_vaddr) + " file_off=0x" +
+                            fmt::format("{:x}", phdr.p_offset) + " file_size=" +
+                            std::to_string(phdr.p_filesz))
+                    .c_str());
+#endif
             elf.LoadSegment(segment_vaddr, phdr.p_offset, phdr.p_filesz);
+#if defined(__APPLE__) && defined(ARCH_ARM64)
+            ShadIOSAppendDiagnosticLog(std::string("Module segment mapped: " + name).c_str());
+#endif
         }
         if (info.num_segments < 4) {
             auto& segment = info.segments[info.num_segments++];
