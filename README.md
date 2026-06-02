@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="documents/orbit-console/assets/app-icon.png" alt="Orbit Console app icon" width="128">
+  <img src="icon.jpg" alt="Orbit Console app icon" width="128">
 </p>
 
 <h1 align="center">Orbit Console</h1>
