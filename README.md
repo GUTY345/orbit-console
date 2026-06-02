@@ -16,16 +16,11 @@
 
 ## Screenshots
 
-Add your app screenshots to `documents/orbit-console/screenshots/` and replace the placeholder
-filenames below.
-
-| Dashboard | Settings |
-| --- | --- |
-| ![Orbit Console dashboard](documents/orbit-console/screenshots/dashboard.png) | ![Orbit Console settings](documents/orbit-console/screenshots/settings.png) |
-
-| Game Overlay | User/Profile |
-| --- | --- |
-| ![Orbit Console game overlay](documents/orbit-console/screenshots/game-overlay.png) | ![Orbit Console user profile](documents/orbit-console/screenshots/profile.png) |
+<img src="documents/orbis-console/screenshots/users.PNG">
+<br>
+<img src="documents/orbis-console/screenshots/home.PNG">
+<br>
+<img src="documents/orbis-console/screenshots/settings.PNG">
 
 ## About
 
