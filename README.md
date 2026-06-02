@@ -1,66 +1,93 @@
-# Orbit Console
+<p align="center">
+  <img src="documents/orbit-console/assets/app-icon.png" alt="Orbit Console app icon" width="128">
+</p>
 
-Orbit Console is an experimental iPadOS port/fork of the shadPS4 PlayStation 4 emulator core.
-The goal of this branch is to explore a native iPad experience with UIKit, Metal/MoltenVK,
-controller/touch overlays, low-memory diagnostics, and an ARM64 compatibility bridge for testing
-PS4 titles on iPadOS.
+<h1 align="center">Orbit Console</h1>
 
-> Important: this project is experimental research software. It is not a finished PS4 emulator for
-> iPad yet. The current iPadOS work focuses on app shell, game library UI, input plumbing, memory
-> survival, diagnostics, and early core bring-up.
+<p align="center">
+  Experimental iPadOS port of the shadPS4 PlayStation 4 emulator core.
+</p>
+
+<p align="center">
+  <strong>Native iPad UI</strong> · <strong>Metal / MoltenVK</strong> · <strong>Touch + Controller Input</strong> · <strong>ARM64 Bring-up</strong>
+</p>
+
+> Note: place the app icon at `documents/orbit-console/assets/app-icon.png`.
+
+## Screenshots
+
+Add your app screenshots to `documents/orbit-console/screenshots/` and replace the placeholder
+filenames below.
+
+| Dashboard | Settings |
+| --- | --- |
+| ![Orbit Console dashboard](documents/orbit-console/screenshots/dashboard.png) | ![Orbit Console settings](documents/orbit-console/screenshots/settings.png) |
+
+| Game Overlay | User/Profile |
+| --- | --- |
+| ![Orbit Console game overlay](documents/orbit-console/screenshots/game-overlay.png) | ![Orbit Console user profile](documents/orbit-console/screenshots/profile.png) |
+
+## About
+
+Orbit Console is a personal experimental fork of [shadPS4](https://github.com/shadps4-emu/shadPS4)
+focused on exploring whether the emulator core can be brought up inside a native iPadOS app shell.
+
+The app side is designed around a console-style experience:
+
+- PS4-inspired dashboard layout
+- game library import flow
+- profile/user selection flow
+- settings menu for system, graphics, audio, input, appearance, and debug options
+- virtual DualShock-style touch controller
+- Bluetooth controller navigation
+- in-game overlay for FPS/RAM/debug status and quick actions
+
+The core side is currently focused on iPadOS survival work:
+
+- compact iOS address-space layout
+- sandbox-friendly memory backing file
+- StikDebug/JIT handshake delay path
+- low-memory diagnostics
+- Metal/MoltenVK surface bridge
+- chunked ELF segment loading logs
+- experimental ARM64 custom CPU bridge scaffold
 
 ## Current Status
 
+This repository is not a finished iPad PS4 emulator yet. It is a work-in-progress research port.
+
 Working or partially working:
 
-- Native iPadOS app shell branded as **Orbit Console**
-- PS4-style dashboard UI and settings panels
-- Game import/library UI
-- Full-screen iPad layout
-- Virtual controller overlay
-- Bluetooth controller input path
-- Metal/MoltenVK view bridging
-- iOS low-memory mode and sandbox backing file path
-- StikDebug/JIT handshake delay path
-- Diagnostic log file at `Documents/orbit_console_cpu.log`
-- Chunked ELF segment loading diagnostics
-- Experimental ARM64 custom CPU bridge scaffold
+- Orbit Console native iPadOS app shell
+- full-screen iPad dashboard
+- game import and library UI
+- settings panels
+- virtual controller overlay
+- external controller input path
+- diagnostics log output
+- early shadPS4 core initialization on iPadOS
+- HLE library registration
+- module loading diagnostics
 
 Still incomplete:
 
-- Full x86-64 to ARM64 dynarec/JIT backend
-- Complete x86-64 decoder coverage
-- Complete SSE/AVX instruction support
-- Full guest thread/TLS/exception parity
-- Stable GPU presentation for real gameplay
-- Finished audio output path on iPadOS
-
-## Upstream Credit
-
-This project is based on [shadPS4](https://github.com/shadps4-emu/shadPS4), an early PlayStation 4
-emulator for Windows, Linux, and macOS written in C++.
-
-All original shadPS4 copyright and GPL licensing terms remain in effect.
+- full x86-64 to ARM64 dynarec/JIT backend
+- broad x86-64 interpreter coverage
+- complete SSE/AVX support
+- complete guest thread/TLS/exception behavior
+- stable GPU presentation for real gameplay
+- finished iPadOS audio output
 
 ## Requirements
 
-- macOS with Xcode installed
-- iPad running iPadOS 18+
-- Apple development signing configured in Xcode
-- StikDebug or equivalent JIT/debug attach workflow for iPadOS testing
-- CMake and the dependencies already prepared by the generated `build_ios` project
+- macOS with Xcode
+- iPadOS 18+
+- iPad with Apple Silicon, tested during development on iPad Air M3
+- Apple development signing configured
+- StikDebug or equivalent debug/JIT attach workflow
+- legally dumped PS4 games and firmware/system modules where required
 
-The current local test device used by this branch:
-
-```text
-Device ID: 00008122-001C199826FA401C
-Bundle ID: com.mathachai.shadps4
-App Name: Orbit Console
-```
-
-Adjust those values for your own device and developer account.
-
-## Build for iPad
+## Build
 
 From the repository root:
 
@@ -77,7 +104,7 @@ xcodebuild \
   build
 ```
 
-Example local command:
+Local example:
 
 ```sh
 xcodebuild \
@@ -92,7 +119,7 @@ xcodebuild \
   build
 ```
 
-## Install on iPad
+## Install
 
 ```sh
 xcrun devicectl device install app \
@@ -100,7 +127,7 @@ xcrun devicectl device install app \
   "build_ios/Debug-iphoneos/Orbit Console.app"
 ```
 
-Example local command:
+Local example:
 
 ```sh
 xcrun devicectl device install app \
@@ -108,26 +135,23 @@ xcrun devicectl device install app \
   "/Users/mathachai/Downloads/shadPS4-main/build_ios/Debug-iphoneos/Orbit Console.app"
 ```
 
-## Testing Games
+## Test Flow
 
 1. Install Orbit Console on the iPad.
-2. Open/attach using StikDebug before starting a game.
-3. Open Orbit Console.
-4. Add a game folder or `eboot.bin` through the dashboard.
-5. Start the game from the dashboard.
-6. If the app exits or returns to dashboard, pull the diagnostic log.
+2. Attach/open the app through StikDebug before starting a game.
+3. Add a dumped game folder or `eboot.bin` from the dashboard.
+4. Press Start Game.
+5. If the app exits, copy `orbit_console_cpu.log` from the device.
 
-Only test games that you legally own and have dumped yourself.
+## Diagnostic Logs
 
-## Pull Diagnostic Logs
-
-Orbit Console writes a lightweight diagnostic log into the app container:
+Orbit Console writes its device-side diagnostic log here:
 
 ```text
 Documents/orbit_console_cpu.log
 ```
 
-Copy it from the iPad:
+Copy the log from the iPad:
 
 ```sh
 xcrun devicectl device copy from \
@@ -138,7 +162,7 @@ xcrun devicectl device copy from \
   --destination ~/Desktop/orbit_console_cpu.log
 ```
 
-Example local command:
+Local example:
 
 ```sh
 xcrun devicectl device copy from \
@@ -149,13 +173,13 @@ xcrun devicectl device copy from \
   --destination ~/Desktop/orbit_console_cpu.log
 ```
 
-View the latest lines:
+View the latest entries:
 
 ```sh
 tail -300 ~/Desktop/orbit_console_cpu.log
 ```
 
-Useful log markers:
+Useful markers:
 
 ```text
 core stage 90: HLE libraries initialized
@@ -167,65 +191,83 @@ ELF LoadSegment complete
 CustomCPUTranslator unsupported opcode
 ```
 
+## App Icon and Screenshot Assets
+
+Use these paths when adding images to the repository:
+
+```text
+documents/orbit-console/assets/app-icon.png
+documents/orbit-console/screenshots/dashboard.png
+documents/orbit-console/screenshots/settings.png
+documents/orbit-console/screenshots/game-overlay.png
+documents/orbit-console/screenshots/profile.png
+```
+
+After adding or replacing images:
+
+```sh
+git add documents/orbit-console README.md
+git commit -m "Add Orbit Console screenshots"
+git push
+```
+
 ## iPadOS Notes
 
-iPadOS has stricter limits than macOS:
+iPadOS is not macOS:
 
-- No Rosetta 2 on iPadOS
-- No native x86-64 execution
-- JIT requires an external/debug attach path
-- Free developer accounts have tighter memory limits
-- Large contiguous virtual memory reservations can fail
-- `shm_open` is not available the same way as desktop macOS
-
-This fork uses a compact iOS address-space path and a sandbox backing file to get further into
-module loading on device.
+- there is no Rosetta 2 on iPadOS
+- x86-64 PS4 code cannot run natively on ARM64
+- JIT/debug permission needs an attach workflow such as StikDebug
+- free developer accounts have tighter memory ceilings
+- large contiguous virtual memory mappings can fail
+- desktop-only APIs such as `shm_open` need iOS-safe alternatives
 
 ## CPU Bridge Status
 
-The current ARM64 custom CPU bridge is a scaffold, not a complete replacement for Rosetta/FEX/Box64.
-It currently provides:
+The current ARM64 custom CPU bridge is an early scaffold, not a complete emulator backend.
 
-- x86-64 register context
+It currently includes:
+
+- guest x86-64 register context
 - RFLAGS basics
 - REX/ModRM/SIB/RIP-relative decode helpers
 - selected integer instructions
 - selected XMM/SSE instructions
-- unsupported-opcode logging with Zydis disassembly
-- safe suspend path instead of crashing on unknown instructions
+- Zydis-based unsupported opcode logging
+- safe suspend path for unsupported instructions
 
-For real gameplay, the project still needs either:
+Real gameplay still requires a much deeper solution:
 
-- a real x86-64 interpreter with broad opcode/SIMD coverage, or
-- a real x86-64 to AArch64 dynarec/JIT backend with block cache and iPadOS JIT support.
+- broad interpreter coverage, or
+- x86-64 to AArch64 dynarec/JIT with block cache, syscall/HLE dispatch, thread/TLS handling, and
+  exception bridging.
 
-## Repository Hygiene
+## Repository
 
-Recommended before pushing to your own GitHub repo:
+GitHub:
 
-```sh
-git remote remove origin
-git remote add origin https://github.com/GUTY345/orbit-console.git
-git branch -M main
-git push -u origin main
+```text
+https://github.com/GUTY345/orbit-console
 ```
 
-Do not commit local build output unless you intentionally want it in the repo. Common folders to
-avoid committing:
+Recommended ignored local output:
 
 ```text
 build_ios/
 .codex_backups/
+.zhanlu/
 DerivedData/
 *.xcuserdata
 ```
 
 ## Legal
 
-This project does not include PS4 firmware, system modules, games, copyrighted assets, or keys.
-You are responsible for using files dumped from hardware and games you legally own.
+This repository does not include PS4 firmware, system modules, games, copyrighted assets, or keys.
+Only use files dumped from hardware and games you legally own.
 
-## License
+## Upstream and License
 
-Orbit Console is a fork/port of shadPS4 and remains licensed under GPL-2.0-or-later.
-See [LICENSE](LICENSE) for details.
+Orbit Console is based on [shadPS4](https://github.com/shadps4-emu/shadPS4).
+
+This project remains licensed under GPL-2.0-or-later. See [LICENSE](LICENSE).
+
