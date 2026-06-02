@@ -182,25 +182,6 @@ ELF LoadSegment complete
 CustomCPUTranslator unsupported opcode
 ```
 
-## App Icon and Screenshot Assets
-
-Use these paths when adding images to the repository:
-
-```text
-documents/orbit-console/assets/app-icon.png
-documents/orbit-console/screenshots/dashboard.png
-documents/orbit-console/screenshots/settings.png
-documents/orbit-console/screenshots/game-overlay.png
-documents/orbit-console/screenshots/profile.png
-```
-
-After adding or replacing images:
-
-```sh
-git add documents/orbit-console README.md
-git commit -m "Add Orbit Console screenshots"
-git push
-```
 
 ## iPadOS Notes
 
