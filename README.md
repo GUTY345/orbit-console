@@ -16,11 +16,11 @@
 
 ## Screenshots
 
-<img src="documents/orbis-console/screenshots/users.PNG">
+<img src="documents/orbis-console/screenshots/users.PNG"/>
 <br>
-<img src="documents/orbis-console/screenshots/home.PNG">
+<img src="documents/orbis-console/screenshots/home.PNG"/>
 <br>
-<img src="documents/orbis-console/screenshots/settings.PNG">
+<img src="documents/orbis-console/screenshots/settings.PNG"/>
 
 ## About
 
