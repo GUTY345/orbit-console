@@ -12,8 +12,6 @@
   <strong>Native iPad UI</strong> · <strong>Metal / MoltenVK</strong> · <strong>Touch + Controller Input</strong> · <strong>ARM64 Bring-up</strong>
 </p>
 
-> Note: place the app icon at `documents/orbit-console/assets/app-icon.png`.
-
 ## Screenshots
 
 <img src="documents/orbis-console/screenshots/users.PNG"/>
