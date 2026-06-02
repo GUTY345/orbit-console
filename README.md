@@ -14,9 +14,9 @@
 
 ## Screenshots
 
-<img src="documents/orbis-console/screenshots/users.PNG" width="120" height="80"/>
-<img src="documents/orbis-console/screenshots/home.PNG" width="120" height="80"/>
-<img src="documents/orbis-console/screenshots/settings.PNG" width="120" height="80"/>
+<img src="users 2.png" width="500" height="150"/>
+<img src="home 2.png" width="500" height="150"/>
+<img src="settings 2.png" width="500" height="150"/>
 
 ## About
 
